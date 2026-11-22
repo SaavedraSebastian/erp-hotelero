@@ -5,10 +5,14 @@ import type { AuthContext } from '../../shared/types/context.ts';
 interface SecuritySchemaLayout {
   userTable: 'usuario_sistema' | 'usuario_interno';
   pkColumn: string;
+  authIdColumn: string;
   codeColumn: string;
   nameColumn: string;
-  activeColumn: string;
-  activeValueSql: string;
+  activeExprSql: string;
+  depColumn: string | null;
+  hasTurno: boolean;
+  hasIdPersonalG2: boolean;
+  hasIdUsuarioG4: boolean;
 }
 
 let cachedLayout: SecuritySchemaLayout | null = null;
@@ -52,29 +56,68 @@ async function detectSecuritySchemaLayout(): Promise<SecuritySchemaLayout> {
       ? 'id_usuario'
       : 'id';
 
+    const authIdColumn = colMap.has('auth_user_id')
+      ? 'auth_user_id'
+      : colMap.has('supabase_user_id')
+      ? 'supabase_user_id'
+      : colMap.has('id_auth_user')
+      ? 'id_auth_user'
+      : 'auth_user_id';
+
     const codeColumn = colMap.has('codigo_usuario')
       ? 'codigo_usuario'
       : colMap.has('codigo')
       ? 'codigo'
+      : colMap.has('username')
+      ? 'username'
+      : colMap.has('email')
+      ? 'email'
       : pkColumn;
 
     const nameColumn = colMap.has('nombre_completo')
       ? 'nombre_completo'
       : colMap.has('nombre')
       ? 'nombre'
+      : colMap.has('nombres')
+      ? 'nombres'
       : codeColumn;
 
-    const activeColumn = colMap.has('activo') ? 'activo' : 'estado';
-    const activeType = colMap.get(activeColumn) ?? 'boolean';
-    const activeValueSql = activeType === 'boolean' ? 'TRUE' : "'ACTIVO'";
+    const activeColumn = colMap.has('activo')
+      ? 'activo'
+      : colMap.has('estado')
+      ? 'estado'
+      : colMap.has('habilitado')
+      ? 'habilitado'
+      : null;
+
+    let activeExprSql = 'TRUE';
+    if (activeColumn) {
+      const activeType = colMap.get(activeColumn) ?? 'boolean';
+      activeExprSql =
+        activeType === 'boolean'
+          ? `COALESCE(u.${activeColumn}, TRUE)`
+          : `(UPPER(u.${activeColumn}::text) IN ('ACTIVO', 'ACTIVE', 'TRUE', '1'))`;
+    }
+
+    const depColumn = colMap.has('departamento')
+      ? 'departamento'
+      : colMap.has('area')
+      ? 'area'
+      : colMap.has('cargo')
+      ? 'cargo'
+      : null;
 
     cachedLayout = {
       userTable: userTable as SecuritySchemaLayout['userTable'],
       pkColumn,
+      authIdColumn,
       codeColumn,
       nameColumn,
-      activeColumn,
-      activeValueSql,
+      activeExprSql,
+      depColumn,
+      hasTurno: colMap.has('turno'),
+      hasIdPersonalG2: colMap.has('id_personal_g2'),
+      hasIdUsuarioG4: colMap.has('id_usuario_g4'),
     };
     return cachedLayout;
   } finally {
@@ -95,18 +138,23 @@ export async function resolveErpAuthContext(authUserId: string): Promise<AuthCon
   const client = await pool.connect();
 
   try {
+    const depExpr = layout.depColumn ? `COALESCE(u.${layout.depColumn}, '')::text` : "''::text";
+    const turnoExpr = layout.hasTurno ? 'u.turno::text' : 'NULL::text';
+    const p2Expr = layout.hasIdPersonalG2 ? 'u.id_personal_g2::text' : 'NULL::text';
+    const u4Expr = layout.hasIdUsuarioG4 ? 'u.id_usuario_g4::integer' : 'NULL::integer';
+
     const userQuery = `
       SELECT
         u.${layout.pkColumn}::text AS usuario_id,
         u.${layout.codeColumn}::text AS codigo_usuario,
         u.${layout.nameColumn}::text AS nombre,
-        COALESCE(u.departamento, '')::text AS departamento,
-        u.turno::text AS turno,
-        u.id_personal_g2::text AS id_personal_g2,
-        u.id_usuario_g4 AS id_usuario_g4,
-        (u.${layout.activeColumn} = ${layout.activeValueSql}) AS esta_activo
+        ${depExpr} AS departamento,
+        ${turnoExpr} AS turno,
+        ${p2Expr} AS id_personal_g2,
+        ${u4Expr} AS id_usuario_g4,
+        ${layout.activeExprSql} AS esta_activo
       FROM seguridad.${layout.userTable} u
-      WHERE u.auth_user_id = $1::uuid
+      WHERE u.${layout.authIdColumn}::text = $1
       LIMIT 1
     `;
     const userRes = await client.query<{
@@ -151,14 +199,30 @@ export async function resolveErpAuthContext(authUserId: string): Promise<AuthCon
     const rolPermisoCols = colsByTable.get('rol_permiso') ?? new Set();
 
     const rolPk = rolCols.has('id_rol') ? 'id_rol' : 'id';
-    const rolCode = rolCols.has('codigo') ? 'codigo' : rolCols.has('codigo_rol') ? 'codigo_rol' : 'nombre';
+    const rolCode = rolCols.has('codigo')
+      ? 'codigo'
+      : rolCols.has('codigo_rol')
+      ? 'codigo_rol'
+      : rolCols.has('clave')
+      ? 'clave'
+      : 'nombre';
     const permisoPk = permisoCols.has('id_permiso') ? 'id_permiso' : 'id';
-    const permisoCode = permisoCols.has('codigo') ? 'codigo' : permisoCols.has('codigo_permiso') ? 'codigo_permiso' : 'clave';
+    const permisoCode = permisoCols.has('codigo')
+      ? 'codigo'
+      : permisoCols.has('codigo_permiso')
+      ? 'codigo_permiso'
+      : permisoCols.has('clave')
+      ? 'clave'
+      : 'nombre';
     const urUserFk = usuarioRolCols.has(layout.pkColumn)
       ? layout.pkColumn
+      : usuarioRolCols.has('id_usuario_sistema')
+      ? 'id_usuario_sistema'
+      : usuarioRolCols.has('id_usuario_interno')
+      ? 'id_usuario_interno'
       : usuarioRolCols.has('id_usuario')
       ? 'id_usuario'
-      : 'id_usuario_sistema';
+      : 'usuario_id';
     const urRolFk = usuarioRolCols.has('id_rol') ? 'id_rol' : 'rol_id';
     const rpRolFk = rolPermisoCols.has('id_rol') ? 'id_rol' : 'rol_id';
     const rpPermFk = rolPermisoCols.has('id_permiso') ? 'id_permiso' : 'permiso_id';

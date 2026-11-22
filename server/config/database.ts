@@ -1,5 +1,12 @@
+import dns from 'dns';
 import { Pool, type PoolClient, type PoolConfig } from 'pg';
 import { getEnv } from './env.ts';
+
+try {
+  dns.setDefaultResultOrder('ipv4first');
+} catch {
+  // ignore if unsupported
+}
 
 let sharedPool: Pool | null = null;
 let closingPromise: Promise<void> | null = null;
@@ -8,6 +15,17 @@ function sanitizePgErrorMessage(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error ?? 'Error de base de datos');
   // Nunca permitir que credenciales de una URL aparezcan en logs
   return raw.replace(/postgres(?:ql)?:\/\/[^@\s]+@/gi, 'postgres://[REDACTED]@');
+}
+
+function normalizeConnectionString(rawUrl: string): string {
+  try {
+    const parsed = new URL(rawUrl);
+    parsed.searchParams.delete('sslmode');
+    parsed.searchParams.delete('uselibpqcompat');
+    return parsed.toString();
+  } catch {
+    return rawUrl;
+  }
 }
 
 function buildPoolConfig(): PoolConfig {
@@ -21,7 +39,7 @@ function buildPoolConfig(): PoolConfig {
     : false;
 
   return {
-    connectionString: env.databaseUrl,
+    connectionString: normalizeConnectionString(env.databaseUrl),
     max: env.pgPoolMax,
     connectionTimeoutMillis: env.pgConnectionTimeoutMs,
     idleTimeoutMillis: env.pgIdleTimeoutMs,
