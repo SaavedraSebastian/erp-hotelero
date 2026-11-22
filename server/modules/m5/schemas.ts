@@ -129,7 +129,7 @@ export const createOpinionBodySchema = z
     // Subtipo RESENA
     calificacion: z.coerce.number().int().min(1).max(5).optional(),
     titulo: z.string().trim().max(80).optional().nullable(),
-    canal: z.enum(['Directo', 'Google', 'Booking.com', 'TripAdvisor', 'Expedia']).optional(),
+    canal: z.enum(['Directo', 'Google', 'Booking.com', 'TripAdvisor']).optional(), // g5_crm.resena restringe el canal
     // Subtipo ENCUESTA
     puntaje: z.coerce.number().int().min(0).max(10).optional(),
     recomendaria: z.boolean().optional().nullable(),
@@ -176,8 +176,9 @@ export const createSolicitudHuespedBodySchema = z.object({
   idHabitacion: bigintIdSchema.optional().nullable(),
   numeroHabitacion: z.string().trim().max(20).optional().nullable(),
   tipo: z.string().trim().min(2).max(60),
-  areaDestino: z.enum(['Recepción', 'Housekeeping', 'Mantenimiento', 'Restaurante', 'Atención al huésped']),
-  origen: z.enum(['Portal Autoatención', 'Recepción/CRM', 'Asistente IA', 'Teléfono']).default('Recepción/CRM'),
+  // La base solo admite estas tres áreas y estos dos orígenes (g5_crm.solicitud_huesped).
+  areaDestino: z.enum(['Recepción', 'Housekeeping', 'Mantenimiento']),
+  origen: z.enum(['Portal Autoatención', 'Recepción/CRM']).default('Recepción/CRM'),
   descripcion: z.string().trim().min(3).max(500),
 });
 

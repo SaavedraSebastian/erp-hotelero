@@ -123,7 +123,7 @@ export async function listComprobantes(client: PoolClient, params: PaginationPar
        total::text AS total,
        estado, mensaje_rechazo, motivo_nota,
        fecha_emision::text AS fecha_emision,
-       hash_cpe, cdr_estado, fecha_envio_sunat::text AS fecha_envio_sunat
+       hash_cpe
      FROM g4_finanzas.comprobante
      ${whereClause}
      ORDER BY fecha_emision DESC
@@ -139,30 +139,46 @@ export async function listTurnosCaja(client: PoolClient, params: PaginationParam
   const where: string[] = [];
   if (params.status) {
     values.push(params.status);
-    where.push(`estado = $${values.length}`);
+    where.push(`t.estado = $${values.length}`);
   }
   const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
   const countRes = await client.query<{ total: string }>(
-    `SELECT COUNT(*)::text AS total FROM g4_finanzas.turno_caja ${whereClause}`,
+    `SELECT COUNT(*)::text AS total FROM g4_finanzas.turno_caja t ${whereClause}`,
     values
   );
   const offset = (params.page - 1) * params.pageSize;
   values.push(params.pageSize, offset);
 
+  // saldo_calculado = saldo vigente del turno con el mismo criterio del cierre:
+  // saldo inicial + cobros en efectivo + movimientos manuales (ingresos - egresos).
   const res = await client.query(
     `SELECT
-       id_turno_caja, id_usuario, id_usuario_autoriza, turno,
-       saldo_inicial::text AS saldo_inicial,
-       saldo_esperado::text AS saldo_esperado,
-       saldo_final::text AS saldo_final,
-       diferencia::text AS diferencia,
-       justificacion_diferencia, motivo_excepcion,
-       fecha_apertura::text AS fecha_apertura,
-       fecha_cierre::text AS fecha_cierre,
-       estado
-     FROM g4_finanzas.turno_caja
+       t.id_turno_caja, t.id_usuario, t.id_usuario_autoriza, t.turno,
+       t.saldo_inicial::text AS saldo_inicial,
+       t.saldo_esperado::text AS saldo_esperado,
+       t.saldo_final::text AS saldo_final,
+       t.diferencia::text AS diferencia,
+       t.justificacion_diferencia, t.motivo_excepcion,
+       t.fecha_apertura::text AS fecha_apertura,
+       t.fecha_cierre::text AS fecha_cierre,
+       t.estado,
+       cf.cobros_efectivo::text AS cobros_efectivo,
+       mv.ingresos::text AS ingresos_manuales,
+       mv.egresos::text AS egresos_manuales,
+       (t.saldo_inicial + cf.cobros_efectivo + mv.ingresos - mv.egresos)::text AS saldo_calculado
+     FROM g4_finanzas.turno_caja t
+     CROSS JOIN LATERAL (
+       SELECT COALESCE(SUM(c.monto), 0) AS cobros_efectivo
+       FROM g4_finanzas.cobro c
+       WHERE c.id_turno_caja = t.id_turno_caja AND c.estado = 'REGISTRADO' AND c.medio_pago = 'EFECTIVO'
+     ) cf
+     CROSS JOIN LATERAL (
+       SELECT COALESCE(SUM(m.importe) FILTER (WHERE m.tipo = 'INGRESO'), 0) AS ingresos,
+              COALESCE(SUM(m.importe) FILTER (WHERE m.tipo = 'EGRESO'), 0) AS egresos
+       FROM g4_finanzas.movimiento_caja m WHERE m.id_turno_caja = t.id_turno_caja
+     ) mv
      ${whereClause}
-     ORDER BY fecha_apertura DESC
+     ORDER BY t.fecha_apertura DESC
      LIMIT $${values.length - 1} OFFSET $${values.length}`,
     values
   );
@@ -208,26 +224,31 @@ export async function listCuentasPorCobrar(client: PoolClient, params: Paginatio
   const where: string[] = [];
   if (params.status) {
     values.push(params.status);
-    where.push(`estado = $${values.length}`);
+    where.push(`cxc.estado = $${values.length}`);
   }
   const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
   const countRes = await client.query<{ total: string }>(
-    `SELECT COUNT(*)::text AS total FROM g4_finanzas.cuenta_por_cobrar ${whereClause}`,
+    `SELECT COUNT(*)::text AS total FROM g4_finanzas.cuenta_por_cobrar cxc ${whereClause}`,
     values
   );
   const offset = (params.page - 1) * params.pageSize;
   values.push(params.pageSize, offset);
 
+  // El comprobante aporta la referencia y el documento del cliente; la cuenta, el huésped.
   const res = await client.query(
     `SELECT
-       id_cxc, id_cuenta, id_comprobante, id_huesped::text AS id_huesped,
-       referencia_documento, razon_social_cliente, numero_documento_cliente,
-       fecha_emision::text AS fecha_emision, fecha_vencimiento::text AS fecha_vencimiento,
-       monto_original::text AS monto_original, monto_pagado::text AS monto_pagado,
-       saldo_pendiente::text AS saldo_pendiente, estado, nota_seguimiento
-     FROM g4_finanzas.cuenta_por_cobrar
+       cxc.id_cuenta_por_cobrar AS id_cxc, cxc.id_cuenta, cxc.id_comprobante,
+       cu.id_huesped::text AS id_huesped,
+       CASE WHEN cb.id_comprobante IS NOT NULL THEN cb.serie || '-' || cb.correlativo::text END AS referencia_documento,
+       cxc.razon_social_cliente, cb.numero_documento_cliente,
+       cxc.fecha_emision::text AS fecha_emision, cxc.fecha_vencimiento::text AS fecha_vencimiento,
+       cxc.monto_original::text AS monto_original, cxc.monto_pagado::text AS monto_pagado,
+       cxc.saldo_pendiente::text AS saldo_pendiente, cxc.estado, cxc.nota_seguimiento
+     FROM g4_finanzas.cuenta_por_cobrar cxc
+     LEFT JOIN g4_finanzas.comprobante cb ON cb.id_comprobante = cxc.id_comprobante
+     LEFT JOIN g4_finanzas.cuenta cu ON cu.id_cuenta = cxc.id_cuenta
      ${whereClause}
-     ORDER BY fecha_vencimiento ASC
+     ORDER BY cxc.fecha_vencimiento ASC
      LIMIT $${values.length - 1} OFFSET $${values.length}`,
     values
   );

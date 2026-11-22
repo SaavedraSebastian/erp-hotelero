@@ -501,8 +501,8 @@ export function renderCRMModule() {
           setText(card, 'name', cp.name);
           setText(card, 'offer', cp.offerDescription || cp.subject || '');
           setText(card, 'sent', String(cp.sentCount));
-          setText(card, 'open-rate', `${cp.openRate}%`);
-          setText(card, 'conversions', String(cp.conversionCount));
+          setText(card, 'open-rate', cp.openRate == null ? '—' : `${cp.openRate}%`);
+          setText(card, 'conversions', cp.conversionCount == null ? '—' : String(cp.conversionCount));
           setVisible(card, 'actions-wrap', canEditCurrentTab);
           if (canEditCurrentTab) {
             const btn = getRef(card, 'toggle-btn');
@@ -592,16 +592,16 @@ export function renderCRMModule() {
 
       const avgScore = state.surveys.length > 0
         ? (state.surveys.reduce((s, r) => s + Number(r.overallScore || 0), 0) / state.surveys.length).toFixed(2)
-        : '4.63';
+        : null;
       const promoters = state.surveys.filter((s) => Number(s.npsScore ?? s.npsRecommend ?? 0) >= 9).length;
       const detractors = state.surveys.filter((s) => Number(s.npsScore ?? s.npsRecommend ?? 0) <= 6).length;
-      const npsVal = state.surveys.length > 0 ? Math.round(((promoters - detractors) / state.surveys.length) * 100) : 67;
+      const npsVal = state.surveys.length > 0 ? Math.round(((promoters - detractors) / state.surveys.length) * 100) : null;
 
       mountRef(
         tabBody,
         'kpis',
-        StatTile({ label: 'Satisfacción Promedio', value: `${avgScore} / 5.0`, tone: 'teal' }),
-        StatTile({ label: 'Net Promoter Score (NPS)', value: `${npsVal >= 0 ? '+' : ''}${npsVal}`, tone: 'success' }),
+        StatTile({ label: 'Satisfacción Promedio', value: avgScore === null ? '—' : `${avgScore} / 5.0`, tone: 'teal' }),
+        StatTile({ label: 'Net Promoter Score (NPS)', value: npsVal === null ? '—' : `${npsVal >= 0 ? '+' : ''}${npsVal}`, tone: 'success' }),
         StatTile({ label: 'Encuestas Respondidas', value: String(state.surveys.length) })
       );
 
@@ -613,12 +613,12 @@ export function renderCRMModule() {
           setText(row, 'guest', srv.guestName);
           setText(row, 'date', ` · ${srv.date}`);
           setText(row, 'comment', srv.comment || 'Sin comentario adicional');
-          const cln = srv.cleanliness ?? srv.cleanlinessScore ?? 5;
-          const sr = srv.service ?? srv.serviceScore ?? 5;
-          const fd = srv.food ?? 5;
+          const cln = srv.cleanliness ?? srv.cleanlinessScore ?? '—';
+          const sr = srv.service ?? srv.serviceScore ?? '—';
+          const fd = srv.food ?? '—';
           setText(row, 'breakdown', `Limpieza: ${cln} · Servicio: ${sr} · Gastronomía: ${fd}`);
           setText(row, 'score', `${srv.overallScore} / 5`);
-          setText(row, 'nps', `NPS: ${srv.npsScore ?? srv.npsRecommend ?? 9}/10`);
+          setText(row, 'nps', `NPS: ${srv.npsScore ?? srv.npsRecommend ?? '—'}/10`);
           return row;
         })
       );

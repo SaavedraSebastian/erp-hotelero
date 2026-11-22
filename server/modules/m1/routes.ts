@@ -3,6 +3,7 @@ import { authenticateJwt } from '../../middleware/authenticate.ts';
 import { requirePermission } from '../../middleware/authorize.ts';
 import { validateBody, validateParams, validateQuery } from '../../middleware/validate.ts';
 import { paginationQuerySchema } from '../../shared/pagination/index.ts';
+import { registerM1Gestion } from '../gestion/m1.ts';
 import { PERMISSIONS } from '../seguridad/permissions.ts';
 import * as ctrl from './controller.ts';
 import {
@@ -102,5 +103,6 @@ export function createM1Router(): Router {
     ctrl.createListaEspera
   );
 
+  registerM1Gestion(router);
   return router;
 }

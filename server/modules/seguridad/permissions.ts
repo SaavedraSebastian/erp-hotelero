@@ -12,6 +12,8 @@ export const PERMISSIONS = {
   M1_CHECKIN_REGISTRAR: 'm1.checkin.registrar',
   M1_CHECKOUT_REGISTRAR: 'm1.checkout.registrar',
   M1_TARIFA_CONSULTAR: 'm1.tarifa.consultar',
+  M1_TARIFA_ADMINISTRAR: 'm1.tarifa.administrar',
+  M1_HABITACION_ADMINISTRAR: 'm1.habitacion.administrar',
 
   M2_ESTADO_CONSULTAR: 'm2.estado.consultar',
   M2_ESTADO_ACTUALIZAR: 'm2.estado.actualizar',
@@ -43,6 +45,12 @@ export const PERMISSIONS = {
   M3_COMPRA_APROBAR: 'm3.compra.aprobar',
   M3_COMPRA_ENVIAR: 'm3.compra.enviar',
   M3_COMPRA_RECIBIR: 'm3.compra.recibir',
+  M3_CATALOGO_ADMINISTRAR: 'm3.catalogo.administrar',
+  M3_INVENTARIO_AJUSTAR: 'm3.inventario.ajustar',
+  M3_RECETA_CONSULTAR: 'm3.receta.consultar',
+  M3_RECETA_ADMINISTRAR: 'm3.receta.administrar',
+  M3_PROVEEDOR_CONSULTAR: 'm3.proveedor.consultar',
+  M3_PROVEEDOR_ADMINISTRAR: 'm3.proveedor.administrar',
 
   M4_CUENTA_CONSULTAR: 'm4.cuenta.consultar',
   M4_CUENTA_OPERAR: 'm4.cuenta.operar',
@@ -56,6 +64,7 @@ export const PERMISSIONS = {
   M4_ALERTA_CONSULTAR: 'm4.alerta.consultar',
   M4_ALERTA_REVISAR: 'm4.alerta.revisar',
   M4_CXC_CONSULTAR: 'm4.cxc.consultar',
+  M4_CXC_ADMINISTRAR: 'm4.cxc.administrar',
 
   M5_PERFIL_CONSULTAR: 'm5.perfil.consultar',
   M5_PREFERENCIA_GESTIONAR: 'm5.preferencia.gestionar',

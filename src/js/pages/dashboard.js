@@ -11,7 +11,7 @@ import {
 import { formatCurrency } from '../utils/formatters.js';
 import { navigate } from '../core/router.js';
 import { erpStore } from '../core/store.js';
-import { TODAY } from '../data/seed-data.js';
+import { TODAY } from '../data/empty-state.js';
 import { ModuleAIAdvisor, ModuleHeader, StatTile, StatusText } from '../components/ui-components.js';
 import { renderDonutChart, renderGroupedBarChart } from '../components/charts.js';
 import dashboardHtml from '../../html/pages/dashboard.html?raw';

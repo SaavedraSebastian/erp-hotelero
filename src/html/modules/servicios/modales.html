@@ -3,38 +3,31 @@
     <form class="stack-md">
       <div class="grid-2">
         <div>
-          <label class="field-label">SKU / Código</label>
-          <input class="input-control font-mono" required data-ref="sku" />
-        </div>
-        <div>
           <label class="field-label">Nombre</label>
           <input class="input-control" required data-ref="name" />
         </div>
         <div>
-          <label class="field-label">Categoría</label>
-          <select class="select-control" data-ref="category">
-            <option value="Restaurante">Restaurante</option>
-            <option value="Bar">Bar</option>
-            <option value="Minibar">Minibar</option>
-            <option value="Cafetería">Cafetería</option>
-          </select>
+          <label class="field-label">Punto de venta</label>
+          <select class="select-control" data-ref="pos"></select>
         </div>
         <div>
-          <label class="field-label">Precio venta (S/)</label>
-          <input type="number" step="0.5" min="1" class="input-control font-mono" data-ref="price" />
+          <label class="field-label">Categoría de carta</label>
+          <select class="select-control" data-ref="category"></select>
         </div>
         <div>
-          <label class="field-label">Costo (S/)</label>
-          <input type="number" step="0.5" min="0" class="input-control font-mono" data-ref="cost" />
+          <label class="field-label">Tipo</label>
+          <select class="select-control" data-ref="itemType"><option value="plato">Plato</option><option value="bebida">Bebida</option><option value="producto">Producto</option></select>
         </div>
         <div>
-          <label class="field-label">Control de stock</label>
-          <select class="select-control" data-ref="stockControl">
-            <option value="Receta">Receta</option>
-            <option value="Directo">Directo</option>
-          </select>
+          <label class="field-label">Precio de venta (S/)</label>
+          <input type="number" step="0.01" min="0" class="input-control font-mono" required data-ref="price" />
+        </div>
+        <div>
+          <label class="field-label">Artículo de almacén que descuenta stock</label>
+          <select class="select-control" data-ref="article"></select>
         </div>
       </div>
+      <p class="text-11 text-slate-500">Si el producto se prepara con receta, deja el artículo en &quot;Ninguno&quot; y configura la receta aparte. El costo se calcula con los insumos.</p>
       <div class="row-wrap justify-end pt-2">
         <button type="button" class="btn btn-outline-muted" data-ref="cancel-btn">Cancelar</button>
         <button type="submit" class="btn btn-primary">Guardar producto</button>
@@ -50,22 +43,20 @@
           <input class="input-control" required data-ref="name" />
         </div>
         <div>
-          <label class="field-label">Área</label>
-          <select class="select-control" data-ref="area">
-            <option value="Spa">Spa</option>
-            <option value="Lavandería">Lavandería</option>
-            <option value="Cochera">Cochera</option>
-            <option value="Traslados">Traslados</option>
-            <option value="Tours">Tours</option>
-          </select>
+          <label class="field-label">Punto de venta</label>
+          <select class="select-control" data-ref="pos"></select>
+        </div>
+        <div>
+          <label class="field-label">Categoría</label>
+          <select class="select-control" data-ref="category"></select>
         </div>
         <div>
           <label class="field-label">Duración (min, opcional)</label>
-          <input type="number" min="0" class="input-control font-mono" placeholder="Ej. 60" data-ref="duration" />
+          <input type="number" min="1" class="input-control font-mono" placeholder="Ej. 60" data-ref="duration" />
         </div>
         <div>
           <label class="field-label">Tarifa (S/)</label>
-          <input type="number" min="1" class="input-control font-mono" data-ref="price" />
+          <input type="number" step="0.01" min="0" class="input-control font-mono" required data-ref="price" />
         </div>
       </div>
       <div class="row-wrap justify-end pt-2">
@@ -106,46 +97,45 @@
     <form class="stack-md">
       <div class="grid-2">
         <div>
-          <label class="field-label">SKU</label>
-          <input class="input-control font-mono" required data-ref="sku" />
-        </div>
-        <div>
-          <label class="field-label">Nombre insumo</label>
+          <label class="field-label">Nombre del artículo</label>
           <input class="input-control" required data-ref="name" />
         </div>
         <div>
           <label class="field-label">Categoría</label>
-          <select class="select-control" data-ref="category">
-            <option value="Alimentos y Bebidas">Alimentos y Bebidas</option>
-            <option value="Limpieza y Amenities">Limpieza y Amenities</option>
-            <option value="Mantenimiento">Mantenimiento</option>
-            <option value="Minibar">Minibar</option>
-          </select>
+          <select class="select-control" data-ref="category"></select>
         </div>
         <div>
-          <label class="field-label">Unidad</label>
-          <input class="input-control" data-ref="unit" />
-        </div>
-        <div>
-          <label class="field-label">Stock inicial</label>
-          <input type="number" min="0" class="input-control font-mono" data-ref="stock" />
+          <label class="field-label">Unidad de medida</label>
+          <select class="select-control" data-ref="unit"></select>
         </div>
         <div>
           <label class="field-label">Stock mínimo</label>
-          <input type="number" min="1" class="input-control font-mono" data-ref="min-stock" />
+          <input type="number" min="0" step="0.5" class="input-control font-mono" required data-ref="min-stock" />
+        </div>
+        <div>
+          <label class="field-label">Stock inicial</label>
+          <input type="number" min="0" step="0.5" class="input-control font-mono" data-ref="stock" />
         </div>
         <div>
           <label class="field-label">Costo unitario (S/)</label>
-          <input type="number" step="0.5" min="0" class="input-control font-mono" data-ref="unit-cost" />
+          <input type="number" step="0.01" min="0" class="input-control font-mono" data-ref="unit-cost" />
         </div>
         <div>
-          <label class="field-label">Ubicación</label>
-          <input class="input-control" data-ref="location" />
+          <label class="field-label">¿Vence?</label>
+          <label class="row-wrap"><input type="checkbox" data-ref="expires" /> Sí, controla vencimiento</label>
+        </div>
+        <div>
+          <label class="field-label">Vencimiento del stock inicial</label>
+          <input type="date" class="input-control" data-ref="expiry" />
+        </div>
+        <div>
+          <label class="field-label">Días de aviso de vencimiento</label>
+          <input type="number" min="0" max="365" class="input-control font-mono" data-ref="warn-days" />
         </div>
       </div>
       <div class="row-wrap justify-end pt-2">
         <button type="button" class="btn btn-outline-muted" data-ref="cancel-btn">Cancelar</button>
-        <button type="submit" class="btn btn-primary">Crear insumo</button>
+        <button type="submit" class="btn btn-primary">Crear artículo</button>
       </div>
     </form>
   </template>
@@ -162,22 +152,15 @@
           <input class="input-control font-mono" required data-ref="ruc" />
         </div>
         <div>
-          <label class="field-label">Rubro</label>
-          <input class="input-control" data-ref="category" />
-        </div>
-        <div>
-          <label class="field-label">Contacto</label>
-          <input class="input-control" data-ref="contact" />
-        </div>
-        <div>
           <label class="field-label">Teléfono</label>
           <input class="input-control" data-ref="phone" />
         </div>
         <div>
-          <label class="field-label">Lead time (días)</label>
-          <input type="number" min="1" class="input-control font-mono" data-ref="lead-time" />
+          <label class="field-label">Correo</label>
+          <input type="email" class="input-control" data-ref="email" />
         </div>
       </div>
+      <p class="text-11 text-slate-500">Se requiere al menos un teléfono o un correo de contacto.</p>
       <div class="row-wrap justify-end pt-2">
         <button type="button" class="btn btn-outline-muted" data-ref="cancel-btn">Cancelar</button>
         <button type="submit" class="btn btn-primary">Guardar proveedor</button>
@@ -220,26 +203,27 @@
           <select class="select-control" data-ref="product"></select>
         </div>
         <div>
-          <label class="field-label">Precio venta (S/)</label>
-          <input type="number" min="1" class="input-control font-mono" data-ref="sale-price" />
+          <label class="field-label">Precio de venta (S/)</label>
+          <input type="number" class="input-control font-mono" readonly data-ref="sale-price" />
         </div>
         <div>
           <label class="field-label">Ingrediente principal</label>
           <select class="select-control" data-ref="ing1"></select>
         </div>
         <div>
-          <label class="field-label">Cantidad</label>
-          <input type="number" step="0.05" min="0.05" class="input-control font-mono" data-ref="ing1-qty" />
+          <label class="field-label">Cantidad por porción</label>
+          <input type="number" step="0.01" min="0.01" class="input-control font-mono" required data-ref="ing1-qty" />
         </div>
         <div>
-          <label class="field-label">Segundo ingrediente</label>
+          <label class="field-label">Segundo ingrediente (opcional)</label>
           <select class="select-control" data-ref="ing2"></select>
         </div>
         <div>
-          <label class="field-label">Cantidad</label>
-          <input type="number" step="0.05" min="0" class="input-control font-mono" data-ref="ing2-qty" />
+          <label class="field-label">Cantidad por porción</label>
+          <input type="number" step="0.01" min="0" class="input-control font-mono" data-ref="ing2-qty" />
         </div>
       </div>
+      <p class="text-11 text-slate-500">Guardar crea una nueva versión vigente; la anterior queda en el historial.</p>
       <div class="row-wrap justify-end pt-2">
         <button type="button" class="btn btn-outline-muted" data-ref="cancel-btn">Cancelar</button>
         <button type="submit" class="btn btn-primary">Guardar receta</button>

@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import type { PoolClient } from 'pg';
 import { withReadOnlyClient, withTransaction } from '../../shared/database/transaction.ts';
 import { DomainRuleError, NotFoundError } from '../../shared/errors/app-error.ts';
 import { buildPaginatedResponse } from '../../shared/pagination/index.ts';
@@ -229,10 +230,11 @@ export async function emitirComprobanteService(
     operacion_gravada: string;
     id_comprobante_ref?: string | null;
     motivo_nota?: string | null;
-  }
+  },
+  externalClient?: PoolClient
 ) {
   const idUsuario = requireG4UserId(ctx);
-  return withTransaction(ctx, async (client) => {
+  const run = async (client: PoolClient) => {
     const corrRes = await client.query<{ next_corr: number }>(
       `SELECT COALESCE(MAX(correlativo), 0) + 1 AS next_corr
        FROM g4_finanzas.comprobante
@@ -272,11 +274,11 @@ export async function emitirComprobanteService(
       `INSERT INTO g4_finanzas.comprobante (
          id_cuenta, id_usuario, id_comprobante_ref, tipo, serie, correlativo,
          tipo_documento_cliente, numero_documento_cliente, razon_social_cliente, direccion_cliente,
-         operacion_gravada, igv, total, estado, motivo_nota, xml_ubl, hash_cpe, cdr_estado
+         operacion_gravada, igv, total, estado, motivo_nota, xml_ubl, hash_cpe
        ) VALUES (
          $1, $2, $3, $4, $5, $6,
          $7, $8, $9, $10,
-         $11::numeric(12,2), $12::numeric(12,2), $13::numeric(12,2), 'FIRMADO', $14, $15, $16, 'PENDIENTE'
+         $11::numeric(12,2), $12::numeric(12,2), $13::numeric(12,2), 'FIRMADO', $14, $15, $16
        )
        RETURNING id_comprobante, tipo, serie, correlativo, estado, hash_cpe`,
       [
@@ -300,7 +302,9 @@ export async function emitirComprobanteService(
     );
 
     return insertRes.rows[0];
-  });
+  };
+  // Con `externalClient` se ejecuta dentro de la transacción del llamador (p. ej. anulación con nota de crédito).
+  return externalClient ? run(externalClient) : withTransaction(ctx, run);
 }
 
 export async function getTurnosCajaService(ctx: AuthContext, params: PaginationParams) {

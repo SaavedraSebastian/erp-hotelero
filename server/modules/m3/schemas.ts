@@ -94,6 +94,7 @@ export const createMovimientoInventarioBodySchema = z.object({
   id_origen: varcharIdSchema.default('MANUAL'),
   modulo_origen: z.enum(['Almacén', 'Compras', 'Housekeeping y Mantenimiento']).default('Almacén'),
   costo_unitario: moneyStringSchema.optional().nullable(),
+  fecha_vencimiento: dateOnlySchema.optional().nullable(), // entrada con lote nuevo
 });
 
 export const createOrdenCompraBodySchema = z.object({

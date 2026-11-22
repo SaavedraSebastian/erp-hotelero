@@ -3,6 +3,7 @@ import { setMotivoCambioPrecio, withReadOnlyClient, withTransaction } from '../.
 import { DomainRuleError, ForbiddenError, NotFoundError } from '../../shared/errors/app-error.ts';
 import { buildPaginatedResponse } from '../../shared/pagination/index.ts';
 import type { AuthContext, PaginationParams } from '../../shared/types/context.ts';
+import { aplicarMovimientoStock } from '../gestion/stock.ts';
 import * as repo from './repository.ts';
 
 function genCode(prefix: string): string {
@@ -119,8 +120,8 @@ export async function cambiarEstadoComandaService(
     const res = await client.query<{ numero_comanda: string; estado: string }>(
       `UPDATE g3_servicios.comanda
        SET
-         estado = $2,
-         motivo_cancelacion = CASE WHEN $2 = 'cancelada' THEN $3 ELSE motivo_cancelacion END
+         estado = $2::varchar,
+         motivo_cancelacion = CASE WHEN $2::varchar = 'cancelada' THEN $3 ELSE motivo_cancelacion END
        WHERE numero_comanda = $1
        RETURNING numero_comanda, estado`,
       [numeroComanda, nuevoEstado, motivoCancelacion ?? null]
@@ -341,34 +342,17 @@ export async function confirmarConsumoService(ctx: AuthContext, numeroConsumo: s
 
     for (const d of detRes.rows) {
       if (!d.id_articulo_descuento) continue;
-      await client.query(
-        `SELECT id_articulo FROM g3_servicios.articulo_almacen WHERE id_articulo = $1 FOR UPDATE`,
-        [d.id_articulo_descuento]
-      );
-      const stockRes = await client.query<{ total: string }>(
-        `SELECT COALESCE(SUM(cantidad_disponible), 0)::text AS total
-         FROM g3_servicios.lote_articulo
-         WHERE id_articulo = $1`,
-        [d.id_articulo_descuento]
-      );
-      const currentStock = Number(stockRes.rows[0]?.total ?? 0);
-      const qty = Number(d.cantidad);
-      const saldoPosterior = Math.max(0, currentStock - qty);
-
-      await client.query(
-        `INSERT INTO g3_servicios.movimiento_inventario (
-           id_movimiento, id_articulo, tipo_movimiento, cantidad, signo,
-           fecha_hora, saldo_posterior, motivo, id_origen, modulo_origen
-         ) VALUES ($1, $2, 'Consumo POS', $3, 'salida', CURRENT_TIMESTAMP, $4, $5, $6, 'Almacén')`,
-        [
-          crypto.randomUUID(),
-          d.id_articulo_descuento,
-          qty,
-          saldoPosterior,
-          `Confirmación consumo ${numeroConsumo}`,
-          numeroConsumo,
-        ]
-      );
+      // La venta ya ocurrió: se descuenta lo disponible (por lotes) sin bloquear la confirmación si falta stock.
+      await aplicarMovimientoStock(client, {
+        id_articulo: d.id_articulo_descuento,
+        tipo_movimiento: 'Consumo POS',
+        signo: 'salida',
+        cantidad: Number(d.cantidad),
+        motivo: `Confirmación consumo ${numeroConsumo}`,
+        id_origen: numeroConsumo,
+        modulo_origen: 'Almacén',
+        permitirParcial: true,
+      });
     }
 
     const upd = await client.query<{ numero_consumo: string; estado: string }>(
@@ -419,44 +403,8 @@ export async function registrarMovimientoInventarioService(
     costo_unitario?: string | null;
   }
 ) {
-  return withTransaction(ctx, async (client) => {
-    await client.query(
-      `SELECT id_articulo FROM g3_servicios.articulo_almacen WHERE id_articulo = $1 FOR UPDATE`,
-      [input.id_articulo]
-    );
-    const stockRes = await client.query<{ total: string }>(
-      `SELECT COALESCE(SUM(cantidad_disponible), 0)::text AS total
-       FROM g3_servicios.lote_articulo WHERE id_articulo = $1`,
-      [input.id_articulo]
-    );
-    const current = Number(stockRes.rows[0]?.total ?? 0);
-    const nextSaldo = input.signo === 'entrada' ? current + input.cantidad : current - input.cantidad;
-    if (nextSaldo < 0) {
-      throw new DomainRuleError('Stock insuficiente en almacén para registrar esta salida.');
-    }
-
-    const res = await client.query<{ id_movimiento: string; saldo_posterior: string }>(
-      `INSERT INTO g3_servicios.movimiento_inventario (
-         id_movimiento, id_articulo, id_lote, tipo_movimiento, cantidad, signo,
-         fecha_hora, saldo_posterior, motivo, id_origen, modulo_origen, costo_unitario
-       ) VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP, $7, $8, $9, $10, $11::numeric(12,4))
-       RETURNING id_movimiento, saldo_posterior::text AS saldo_posterior`,
-      [
-        crypto.randomUUID(),
-        input.id_articulo,
-        input.id_lote ?? null,
-        input.tipo_movimiento,
-        input.cantidad,
-        input.signo,
-        nextSaldo,
-        input.motivo,
-        input.id_origen,
-        input.modulo_origen,
-        input.costo_unitario ?? null,
-      ]
-    );
-    return res.rows[0];
-  });
+  // El stock es la suma de los lotes: el movimiento y los lotes se actualizan juntos (ver gestion/stock.ts).
+  return withTransaction(ctx, (client) => aplicarMovimientoStock(client, input));
 }
 
 export async function getOrdenesCompraService(ctx: AuthContext, params: PaginationParams) {

@@ -3,6 +3,7 @@ import { authenticateJwt } from '../../middleware/authenticate.ts';
 import { requirePermission } from '../../middleware/authorize.ts';
 import { validateBody, validateParams, validateQuery } from '../../middleware/validate.ts';
 import { paginationQuerySchema } from '../../shared/pagination/index.ts';
+import { registerM3Gestion } from '../gestion/m3.ts';
 import { PERMISSIONS } from '../seguridad/permissions.ts';
 import * as ctrl from './controller.ts';
 import {
@@ -158,5 +159,6 @@ export function createM3Router(): Router {
     ctrl.recibirOrdenCompra
   );
 
+  registerM3Gestion(router);
   return router;
 }

@@ -26,7 +26,7 @@ import { formatCurrency } from '../utils/formatters.js';
 import { getRoute, navigateToView } from '../core/router.js';
 import { erpStore } from '../core/store.js';
 import { maskDocument, maskEmail, maskPhone } from '../data/rbac.js';
-import { TODAY } from '../data/seed-data.js';
+import { TODAY } from '../data/empty-state.js';
 import {
   AccessDeniedCard,
   EmptyState,
@@ -98,13 +98,13 @@ export function renderReservasModule() {
       ? { ...editingRoom, features: [...(editingRoom.features || [])] }
       : {
           number: '',
-          floor: 2,
-          type: 'Superior',
-          capacity: 2,
-          baseRate: 340,
+          floor: 1,
+          type: erpStore.state?.catalogs?.roomTypes?.[0]?.name || '',
+          capacity: erpStore.state?.catalogs?.roomTypes?.[0]?.capacity || 1,
+          baseRate: 0,
           commercialStatus: 'Disponible',
           housekeepingStatus: 'Inspeccionada',
-          features: ['Wi-Fi 6', 'Smart TV 50"', 'Minibar'],
+          features: erpStore.state?.catalogs?.roomTypes?.[0]?.features || [],
         };
 
     openModal({
@@ -120,6 +120,11 @@ export function renderReservasModule() {
         const hk = getRef(form, 'hkStatus');
         const features = getRef(form, 'features');
 
+        // Los tipos válidos son los de la base de datos. Capacidad, tarifa base, características y estado físico
+        // no pertenecen a la habitación (derivan del tipo, de la tarifa y de housekeeping), por eso no se editan aquí.
+        mount(type, (erpStore.state?.catalogs?.roomTypes ?? []).map((t) => h('option', { value: t.name }, t.name)));
+        for (const el of [cap, rate, hk, features]) el.disabled = true;
+
         num.value = formState.number;
         floor.value = String(formState.floor);
         type.value = formState.type;
@@ -130,18 +135,14 @@ export function renderReservasModule() {
 
         setText(form, 'submit-btn', editingRoom ? 'Guardar cambios' : 'Registrar habitación');
         getRef(form, 'cancel-btn')?.addEventListener('click', close);
-        form.addEventListener('submit', (e) => {
+        form.addEventListener('submit', async (e) => {
           e.preventDefault();
           formState.number = num.value.trim();
           formState.floor = Number(floor.value);
           formState.type = type.value;
-          formState.capacity = Number(cap.value);
-          formState.baseRate = Number(rate.value);
-          formState.housekeepingStatus = hk.value;
-          formState.features = features.value.split(',').map((s) => s.trim()).filter(Boolean);
           if (!formState.number) return;
-          erpStore.upsertRoom(formState);
-          close();
+          const res = await erpStore.upsertRoom(formState);
+          if (res?.ok) close(); // si el servidor rechaza, el formulario queda abierto para corregir
         });
         return form;
       },
@@ -156,7 +157,7 @@ export function renderReservasModule() {
       guestId: state.guests[0]?.id || '',
       roomId: defaultRoom?.id || '',
       checkInDate: TODAY,
-      checkOutDate: '2026-11-23',
+      checkOutDate: new Date(Date.parse(TODAY) + 86_400_000).toISOString().slice(0, 10),
       adults: 2,
       children: 0,
       channel: 'Directo Web',
@@ -185,7 +186,10 @@ export function renderReservasModule() {
 
         inDate.value = formState.checkInDate;
         outDate.value = formState.checkOutDate;
-        channel.value = formState.channel;
+        // Los canales válidos son los de las tarifas activas registradas en la base de datos.
+        const channels = [...new Set(state.ratePlans.filter((p) => p.active).map((p) => p.channel))];
+        mount(channel, channels.map((c) => h('option', { value: c }, c)));
+        channel.value = channels.includes(formState.channel) ? formState.channel : channels[0] || '';
         rate.value = String(formState.nightlyRate);
         adults.value = String(formState.adults);
         children.value = String(formState.children);
@@ -239,22 +243,43 @@ export function renderReservasModule() {
   }
 
   function openRateModal(rp) {
+    const cat = erpStore.state?.catalogs ?? { roomTypes: [], seasons: [], channels: [] };
     const formState = rp
-      ? { id: rp.id, name: rp.name, roomType: rp.roomType, season: rp.season, startDate: rp.startDate, endDate: rp.endDate, price: rp.price, active: rp.active, reason: '' }
-      : { name: 'Tarifa Temporada Especial', roomType: 'Superior', season: 'Alta', startDate: TODAY, endDate: '2026-12-31', price: 360, active: true, reason: 'Creación inicial' };
+      ? { id: rp.id, name: rp.name, roomType: rp.roomType, season: rp.season, channel: rp.channel, startDate: rp.startDate, endDate: rp.endDate, price: rp.price, active: rp.active, reason: '' }
+      : {
+          name: '',
+          roomType: cat.roomTypes[0]?.name || '',
+          season: cat.seasons[0]?.name || '',
+          channel: cat.channels[0]?.name || '',
+          startDate: TODAY,
+          endDate: `${TODAY.slice(0, 4)}-12-31`,
+          price: '',
+          active: true,
+          reason: '',
+        };
 
     openModal({
       title: rp ? `Editar Tarifa · ${rp.roomType}` : 'Nuevo Plan Tarifario',
-      subtitle: 'Los cambios actualizan la tarifa base de las habitaciones del tipo seleccionado.',
+      subtitle: rp
+        ? 'Se actualizan nombre, precio y vigencia. Tipo, temporada y canal definen la tarifa y no se modifican.'
+        : 'Una tarifa combina tipo de habitación, temporada y canal de reserva.',
       renderBody: (close) => {
         const form = cloneModal('modal-tarifa');
         const name = getRef(form, 'name');
         const roomType = getRef(form, 'roomType');
         const season = getRef(form, 'season');
+        const channel = getRef(form, 'channel');
         const price = getRef(form, 'price');
         const startDate = getRef(form, 'startDate');
         const endDate = getRef(form, 'endDate');
         const reason = getRef(form, 'reason');
+
+        // Las opciones válidas son las de la base de datos; al editar no se pueden cambiar.
+        mount(roomType, cat.roomTypes.map((t) => h('option', { value: t.name }, t.name)));
+        mount(season, cat.seasons.map((t) => h('option', { value: t.name }, t.name)));
+        mount(channel, cat.channels.map((t) => h('option', { value: t.name }, t.name)));
+        if (rp) for (const el of [roomType, season, channel]) el.disabled = true;
+        channel.value = formState.channel;
 
         name.value = formState.name;
         roomType.value = formState.roomType;
@@ -265,19 +290,20 @@ export function renderReservasModule() {
         reason.value = formState.reason;
 
         getRef(form, 'cancel-btn')?.addEventListener('click', close);
-        form.addEventListener('submit', (e) => {
+        form.addEventListener('submit', async (e) => {
           e.preventDefault();
-          erpStore.upsertRatePlan({
+          const res = await erpStore.upsertRatePlan({
             ...formState,
             name: name.value,
             roomType: roomType.value,
             season: season.value,
+            channel: channel.value,
             price: Number(price.value),
             startDate: startDate.value,
             endDate: endDate.value,
             reason: reason.value,
           });
-          close();
+          if (res?.ok) close();
         });
         return form;
       },
@@ -375,7 +401,7 @@ export function renderReservasModule() {
 
         roomType.value = 'Suite Junior';
         checkInDate.value = TODAY;
-        checkOutDate.value = '2026-11-23';
+        checkOutDate.value = new Date(Date.parse(TODAY) + 86_400_000).toISOString().slice(0, 10);
 
         getRef(form, 'cancel-btn')?.addEventListener('click', close);
         form.addEventListener('submit', (e) => {
@@ -814,7 +840,7 @@ export function renderReservasModule() {
           setText(tr, 'contact', w.contact);
           setText(tr, 'room-type', w.roomType);
           setText(tr, 'dates', `${w.checkInDate} → ${w.checkOutDate}`);
-          mountRef(tr, 'status-badge', StatusText({ label: w.status, variant: w.status === 'Asignada' ? 'success' : w.status === 'Cancelada' ? 'neutral' : 'warning' }));
+          mountRef(tr, 'status-badge', StatusText({ label: w.status, variant: w.status === 'Atendida' ? 'success' : w.status === 'Cancelada' || w.status === 'Vencida' ? 'neutral' : 'warning' }));
           if (w.authorizedBy) {
             setVisible(tr, 'auth-note', true);
             setText(tr, 'auth-note', `${w.decisionNote || ''} (${w.authorizedBy})`);
@@ -827,13 +853,13 @@ export function renderReservasModule() {
                   h('button', {
                     type: 'button',
                     className: 'btn btn-outline btn-xs text-teal',
-                    onClick: () => erpStore.resolveWaitlistEntry(w.id, 'Asignada', 'Upgrade o asignación aprobada'),
-                  }, 'Aprobar / Upgrade'),
+                    onClick: () => erpStore.resolveWaitlistEntry(w.id, 'Atendida'),
+                  }, 'Marcar atendida'),
                   h('button', {
                     type: 'button',
                     className: 'btn btn-outline-muted btn-xs',
-                    onClick: () => erpStore.resolveWaitlistEntry(w.id, 'Reubicada', 'Reubicado en habitación disponible equivalente'),
-                  }, 'Reubicar')
+                    onClick: () => erpStore.resolveWaitlistEntry(w.id, 'Cancelada'),
+                  }, 'Cancelar')
                 )
               : h('span', { className: 'text-11 text-slate-500' }, w.authorizedBy || w.status)
           );
@@ -951,32 +977,42 @@ export function renderReservasModule() {
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.ia_tarifas);
       tabBody = view;
 
-      const dynamicRows = [
-        { category: 'Estándar', demandPct: 50, suggestedRate: 260, deltaLabel: '0%', reason: 'Demanda estable en rango esperado.', actionable: false },
-        { category: 'Superior', demandPct: 33, suggestedRate: 340, deltaLabel: '0%', reason: 'Demanda estable en rango esperado.', actionable: false },
-        { category: 'Deluxe Vista Mar', demandPct: 50, suggestedRate: 505, deltaLabel: '+10%', reason: 'Alta demanda (50% comprometido + 1 en lista de espera).', actionable: true },
-        { category: 'Suite Junior', demandPct: 100, suggestedRate: 680, deltaLabel: '+10%', reason: 'Alta demanda (100% comprometido + 1 en lista de espera).', actionable: true },
-        { category: 'Suite Presidencial', demandPct: 0, suggestedRate: 1080, deltaLabel: '-6%', reason: 'Baja ocupación inmediata (0%); tarifa promocional para impulsar conversión directa.', actionable: true },
-      ];
+      const dyn = state.dynamicPricing ?? { horizonDays: 7, rule: [], types: [] };
+      const fmtPct = (n) => `${n > 0 ? '+' : ''}${n}%`;
+      setText(
+        tabBody,
+        'rule-note',
+        dyn.rule.length
+          ? `Regla: ocupación proyectada a ${dyn.horizonDays} días → ` +
+              dyn.rule.map((t, i) => `≥${Math.round(t.from * 100)}%: ${fmtPct(t.adjustPct)}`).join(' · ') +
+              '. Se aplica a todas las tarifas activas vigentes del tipo.'
+          : ''
+      );
 
       mountRef(
         tabBody,
         'dynamic-rates-tbody',
-        dynamicRows.map((row) => {
-          const rp = state.ratePlans.find((r) => r.roomType === row.category);
-          const currentRate = rp ? rp.price : row.suggestedRate;
-          const alreadyApplied = currentRate === row.suggestedRate;
+        dyn.types.map((row) => {
           const tr = clone('fila-tarifa-ia');
-          setText(tr, 'category', row.category);
-          setText(tr, 'demand', `${row.demandPct}%`);
-          setText(tr, 'current-rate', formatCurrency(currentRate));
-          const sugEl = setText(tr, 'suggested-rate', `${formatCurrency(row.suggestedRate)} (${row.deltaLabel})`);
-          if (sugEl) {
-            sugEl.classList.add(row.deltaLabel.startsWith('-') ? 'text-warning' : 'text-teal');
-          }
-          setText(tr, 'reason', row.reason);
-          if (!row.actionable || alreadyApplied) {
-            mountRef(tr, 'action', h('span', { className: 'text-11 text-slate-400' }, alreadyApplied && row.actionable ? 'Aplicada' : 'Sin cambio'));
+          setText(tr, 'category', row.name);
+          setText(tr, 'demand', `${row.occupancyPct}%`);
+          setText(tr, 'current-rate', row.currentRate == null ? '—' : formatCurrency(row.currentRate));
+          const hasChange = row.currentRate != null && row.suggestedPct !== 0;
+          const sugEl = setText(
+            tr,
+            'suggested-rate',
+            row.suggestedRate == null ? '—' : `${formatCurrency(row.suggestedRate)} (${fmtPct(row.suggestedPct)})`
+          );
+          if (sugEl && hasChange) sugEl.classList.add(row.suggestedPct < 0 ? 'text-warning' : 'text-teal');
+          const reason = row.rooms === 0
+            ? 'Sin habitaciones activas de este tipo.'
+            : row.currentRate == null
+              ? 'Sin tarifa activa vigente: créala primero en Tarifas.'
+              : `Ocupación proyectada ${row.occupancyPct}% (${row.occupiedNights} de ${row.availableNights} noches en ${dyn.horizonDays} días)` +
+                (row.waiting > 0 ? ` y ${row.waiting} en lista de espera` : '') + '.';
+          setText(tr, 'reason', reason);
+          if (!hasChange) {
+            mountRef(tr, 'action', h('span', { className: 'text-11 text-slate-400' }, 'Sin cambio'));
           } else if (canEditCurrentTab) {
             mountRef(
               tr,
@@ -984,7 +1020,12 @@ export function renderReservasModule() {
               h('button', {
                 type: 'button',
                 className: 'btn btn-teal btn-xs',
-                onClick: () => erpStore.applyDynamicRate(row.category, row.suggestedRate, row.reason),
+                onClick: () => {
+                  const ok = window.confirm(
+                    `Aplicar ${fmtPct(row.suggestedPct)} a las ${row.activeRates} tarifa(s) activa(s) vigente(s) de ${row.name}?`
+                  );
+                  if (ok) erpStore.applyDynamicRate(row.id, row.suggestedPct, reason);
+                },
               }, '✓ Aprobar y aplicar')
             );
           } else {
@@ -1001,16 +1042,18 @@ export function renderReservasModule() {
         'noshow-list',
         upcoming.map((r) => {
           const g = guestById.get(r.guestId);
-          const risk = r.noShowRisk || 12;
+          // Sin valor inventado: si la base no tiene predicción para la reserva, se indica explícitamente.
+          const hasRisk = typeof r.noShowRisk === 'number';
+          const risk = hasRisk ? r.noShowRisk : 0;
           const riskLevel = risk >= 50 ? 'Alto' : risk >= 25 ? 'Moderado' : 'Bajo';
-          const riskVariant = risk >= 50 ? 'danger' : risk >= 25 ? 'warning' : 'success';
+          const riskVariant = !hasRisk ? 'neutral' : risk >= 50 ? 'danger' : risk >= 25 ? 'warning' : 'success';
           const row = clone('fila-noshow-ia');
           setText(row, 'title', `${r.code} · ${g?.fullName || '—'} (${r.channel})`);
           setText(row, 'factors', `Factores: ${risk >= 50 ? 'Sin garantía de tarjeta confirmada · ' : ''}Canal ${r.channel} · Ingreso ${r.checkInDate}`);
           mountRef(
             row,
             'right',
-            StatusText({ label: `Riesgo ${risk}% (${riskLevel})`, variant: riskVariant }),
+            StatusText({ label: hasRisk ? `Riesgo ${risk}% (${riskLevel})` : 'Sin predicción IA', variant: riskVariant }),
             risk >= 25
               ? h('button', {
                   type: 'button',

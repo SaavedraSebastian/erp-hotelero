@@ -3,6 +3,7 @@ import { authenticateJwt } from '../../middleware/authenticate.ts';
 import { requirePermission } from '../../middleware/authorize.ts';
 import { validateBody, validateParams, validateQuery } from '../../middleware/validate.ts';
 import { paginationQuerySchema } from '../../shared/pagination/index.ts';
+import { registerM4Gestion } from '../gestion/m4.ts';
 import { PERMISSIONS } from '../seguridad/permissions.ts';
 import * as ctrl from './controller.ts';
 import {
@@ -133,5 +134,6 @@ export function createM4Router(): Router {
     ctrl.decidirAlertaFinanciera
   );
 
+  registerM4Gestion(router);
   return router;
 }

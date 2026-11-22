@@ -91,6 +91,16 @@
         <label class="field-label">Repuestos utilizados</label>
         <input class="input-control" placeholder="Ej. Sensor NTC, válvula 1/2&quot;" data-ref="parts" />
       </div>
+      <div class="grid-2">
+        <div>
+          <label class="field-label">Horas trabajadas</label>
+          <input type="number" min="0" step="0.5" required class="input-control font-mono" data-ref="hours" />
+        </div>
+        <div>
+          <label class="field-label">Costo total (S/)</label>
+          <input type="number" min="0" step="0.01" required class="input-control font-mono" data-ref="cost" />
+        </div>
+      </div>
       <div class="row-wrap justify-end pt-2">
         <button type="button" class="btn btn-outline-muted" data-ref="cancel-btn">Cancelar</button>
         <button type="submit" class="btn btn-teal">Marcar Completada</button>
@@ -103,34 +113,21 @@
       <div class="grid-2">
         <div>
           <label class="field-label">Activo / Equipo</label>
-          <input class="input-control" required data-ref="assetName" />
-        </div>
-        <div>
-          <label class="field-label">Ubicación</label>
-          <input class="input-control" required data-ref="location" />
+          <select class="select-control" required data-ref="asset"></select>
         </div>
         <div>
           <label class="field-label">Frecuencia</label>
-          <select class="select-control" data-ref="frequency">
-            <option value="Semanal">Semanal</option>
-            <option value="Mensual" selected>Mensual</option>
-            <option value="Trimestral">Trimestral</option>
-            <option value="Anual">Anual</option>
-          </select>
+          <select class="select-control" data-ref="frequency"><option value="Semanal">Semanal</option><option value="Mensual" selected>Mensual</option><option value="Trimestral">Trimestral</option><option value="Anual">Anual</option></select>
         </div>
         <div>
-          <label class="field-label">Próxima fecha</label>
+          <label class="field-label">Próxima fecha (opcional)</label>
           <input type="date" class="input-control" data-ref="nextDate" />
         </div>
+      </div>
         <div>
-          <label class="field-label">Responsable</label>
-          <select class="select-control" data-ref="assignedStaffId"></select>
+          <label class="field-label">Tarea de mantenimiento</label>
+          <input class="input-control" required minlength="5" maxlength="150" data-ref="notes" />
         </div>
-      </div>
-      <div>
-        <label class="field-label">Checklist técnico / Notas</label>
-        <input class="input-control" data-ref="notes" />
-      </div>
       <div class="row-wrap justify-end pt-2">
         <button type="button" class="btn btn-outline-muted" data-ref="cancel-btn">Cancelar</button>
         <button type="submit" class="btn btn-primary">Programar revisión</button>
@@ -142,46 +139,39 @@
     <form class="stack-md">
       <div class="grid-2">
         <div>
-          <label class="field-label">Código</label>
-          <input class="input-control font-mono" required data-ref="code" />
-        </div>
-        <div>
           <label class="field-label">Nombre del activo</label>
           <input class="input-control" required data-ref="name" />
         </div>
         <div>
-          <label class="field-label">Categoría</label>
-          <input class="input-control" data-ref="category" />
+          <label class="field-label">Tipo de activo</label>
+          <select class="select-control" data-ref="type"></select>
         </div>
         <div>
-          <label class="field-label">Habitación / Área</label>
-          <input class="input-control" data-ref="roomNumber" />
+          <label class="field-label">Ubicación (habitación o área)</label>
+          <select class="select-control" data-ref="location"></select>
         </div>
         <div>
           <label class="field-label">Marca</label>
-          <input class="input-control" data-ref="brand" />
+          <input class="input-control" maxlength="30" data-ref="brand" />
         </div>
         <div>
-          <label class="field-label">Fecha compra</label>
-          <input type="date" class="input-control" data-ref="purchaseDate" />
+          <label class="field-label">Modelo</label>
+          <input class="input-control" maxlength="30" data-ref="model" />
+        </div>
+        <div>
+          <label class="field-label">Fecha de instalación</label>
+          <input type="date" class="input-control" data-ref="installDate" />
         </div>
         <div>
           <label class="field-label">Horas de uso</label>
-          <input type="number" min="0" class="input-control font-mono" data-ref="hoursUsed" />
+          <input type="number" min="0" step="1" class="input-control font-mono" data-ref="hoursUsed" />
         </div>
         <div>
-          <label class="field-label">Condición</label>
-          <select class="select-control" data-ref="condition">
-            <option value="Óptimo">Óptimo</option>
-            <option value="Requiere revisión">Requiere revisión</option>
-            <option value="En reparación">En reparación</option>
-          </select>
-        </div>
-        <div>
-          <label class="field-label">Riesgo de falla IA (%)</label>
-          <input type="number" min="0" max="100" class="input-control font-mono" data-ref="predictedFailureRisk" />
+          <label class="field-label">Estado</label>
+          <select class="select-control" data-ref="condition"><option value="Operativo">Operativo</option><option value="En reparación">En reparación</option><option value="Dado de baja">Dado de baja</option></select>
         </div>
       </div>
+      <p class="text-11 text-slate-500">El código (ACT-nnnnn) lo asigna la base de datos. El riesgo de falla lo calcula el modelo predictivo.</p>
       <div class="row-wrap justify-end pt-2">
         <button type="button" class="btn btn-outline-muted" data-ref="cancel-btn">Cancelar</button>
         <button type="submit" class="btn btn-primary">Guardar activo</button>

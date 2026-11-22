@@ -25,7 +25,7 @@ import iaFinancieraHtml from '../../html/modules/finanzas/ia-financiera.html?raw
 import { formatCurrency } from '../utils/formatters.js';
 import { getRoute, navigateToView } from '../core/router.js';
 import { erpStore } from '../core/store.js';
-import { TODAY } from '../data/seed-data.js';
+import { TODAY } from '../data/empty-state.js';
 import {
   AccessDeniedCard,
   EmptyState,
@@ -145,9 +145,9 @@ export function renderFinanzasModule() {
         );
         if (defaultFolio) folioSel.value = defaultFolio.id;
         nameIn.value = defaultFolio?.guestName || '';
-        docIn.value = '44891230';
+        docIn.value = '';
         descIn.value = `Servicios de hospedaje y consumos (${defaultFolio?.code || 'FOL'})`;
-        amtIn.value = String(defaultFolio?.totalCharges || 380);
+        amtIn.value = defaultFolio ? String(defaultFolio.totalCharges) : '';
 
         folioSel.addEventListener('change', () => {
           const f = state.folios.find((x) => x.id === folioSel.value);
@@ -395,7 +395,11 @@ export function renderFinanzasModule() {
           const showVoid = canEditCurrentTab && inv.status !== 'Anulada';
           setVisible(row, 'void-btn', showVoid);
           if (showVoid) {
-            getRef(row, 'void-btn').addEventListener('click', () => erpStore.voidInvoice(inv.id));
+            getRef(row, 'void-btn').addEventListener('click', () => {
+              const reason = window.prompt(`Motivo de la anulación de ${inv.series}-${inv.number} (se emite una nota de crédito):`);
+              if (reason === null) return;
+              erpStore.voidInvoice(inv.id, reason);
+            });
           }
           return row;
         })
@@ -503,7 +507,11 @@ export function renderFinanzasModule() {
         const closedView = clone('vista-caja-cerrada');
         setVisible(closedView, 'open-shift-btn', canEditCurrentTab);
         if (canEditCurrentTab) {
-          getRef(closedView, 'open-shift-btn').addEventListener('click', () => erpStore.openCashShift(1500));
+          getRef(closedView, 'open-shift-btn').addEventListener('click', () => {
+            const raw = window.prompt('Saldo inicial de caja (S/):');
+            if (raw === null) return;
+            erpStore.openCashShift(Number(String(raw).replace(',', '.')));
+          });
         }
         mount(tabBody, closedView);
       } else {

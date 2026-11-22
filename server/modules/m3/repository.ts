@@ -28,10 +28,19 @@ export async function listCatalogo(client: PoolClient) {
      JOIN g3_servicios.categoria c ON c.id_categoria = ic.id_categoria
      ORDER BY pv.nombre ASC, ic.nombre ASC`
   );
+  // Catálogos de apoyo a los formularios de artículos, ítems y recetas.
+  const categoriasRes = await client.query(
+    `SELECT id_categoria, nombre, uso FROM g3_servicios.categoria WHERE estado = 'activo' ORDER BY uso, nombre`
+  );
+  const unidadesRes = await client.query(
+    `SELECT id_unidad_medida, nombre, simbolo FROM g3_servicios.unidad_medida WHERE estado = 'activo' ORDER BY nombre`
+  );
   return {
     puntos_venta: puntosRes.rows,
     mesas: mesasRes.rows,
     items: itemsRes.rows,
+    categorias: categoriasRes.rows,
+    unidades: unidadesRes.rows,
   };
 }
 
@@ -179,6 +188,11 @@ export async function listInventario(client: PoolClient, params: PaginationParam
        aa.dias_aviso_vencimiento,
        aa.stock_minimo::text AS stock_minimo,
        aa.estado,
+       aa.id_categoria,
+       (SELECT l.costo_unitario FROM g3_servicios.lote_articulo l
+         WHERE l.id_articulo = aa.id_articulo ORDER BY l.fecha_creacion DESC LIMIT 1)::text AS costo_unitario,
+       (SELECT MIN(l.fecha_vencimiento) FROM g3_servicios.lote_articulo l
+         WHERE l.id_articulo = aa.id_articulo AND l.cantidad_disponible > 0)::text AS proximo_vencimiento,
        COALESCE(
          (SELECT SUM(la.cantidad_disponible) FROM g3_servicios.lote_articulo la WHERE la.id_articulo = aa.id_articulo),
          0
@@ -222,7 +236,24 @@ export async function listOrdenesCompra(client: PoolClient, params: PaginationPa
        oc.decision_aprobacion,
        oc.motivo_decision,
        oc.medio_envio,
-       oc.usuario_creacion
+       oc.usuario_creacion,
+       COALESCE(
+         (
+           SELECT jsonb_agg(
+             jsonb_build_object(
+               'id_detalle_orden', d.id_detalle_orden,
+               'id_articulo', d.id_articulo,
+               'articulo', aa.nombre,
+               'cantidad_solicitada', d.cantidad_solicitada::text,
+               'precio_referencia', d.precio_referencia_capturado::text
+             ) ORDER BY aa.nombre
+           )
+           FROM g3_servicios.detalle_orden_compra d
+           JOIN g3_servicios.articulo_almacen aa ON aa.id_articulo = d.id_articulo
+           WHERE d.numero_orden = oc.numero_orden
+         ),
+         '[]'::jsonb
+       ) AS detalles
      FROM g3_servicios.orden_compra oc
      JOIN g3_servicios.proveedor p ON p.id_proveedor = oc.id_proveedor
      ${whereClause}

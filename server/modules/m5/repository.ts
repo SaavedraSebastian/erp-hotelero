@@ -1,6 +1,27 @@
 import type { PoolClient } from 'pg';
 import { ConflictError, DomainRuleError, NotFoundError } from '../../shared/errors/app-error.ts';
 
+/** La base restringe los valores de área y origen (mayúsculas sin tilde); la API usa los textos de la pantalla. */
+const SOLICITUD_AREA_TO_DB: Record<string, string> = {
+  Recepción: 'RECEPCION',
+  Housekeeping: 'HOUSEKEEPING',
+  Mantenimiento: 'MANTENIMIENTO',
+};
+const SOLICITUD_ORIGEN_TO_DB: Record<string, string> = {
+  'Portal Autoatención': 'PORTAL_AUTOATENCION',
+  'Recepción/CRM': 'RECEPCION_CRM',
+};
+const SOLICITUD_AREA_SQL = `CASE s.area_destino WHEN 'RECEPCION' THEN 'Recepción' WHEN 'HOUSEKEEPING' THEN 'Housekeeping' WHEN 'MANTENIMIENTO' THEN 'Mantenimiento' ELSE s.area_destino END`;
+const SOLICITUD_ORIGEN_SQL = `CASE s.origen WHEN 'PORTAL_AUTOATENCION' THEN 'Portal Autoatención' WHEN 'RECEPCION_CRM' THEN 'Recepción/CRM' ELSE s.origen END`;
+
+const RESENA_CANAL_TO_DB: Record<string, string> = {
+  Directo: 'DIRECTO',
+  Google: 'GOOGLE',
+  'Booking.com': 'BOOKING_COM',
+  TripAdvisor: 'TRIPADVISOR',
+};
+const RESENA_CANAL_SQL = `CASE r.canal WHEN 'DIRECTO' THEN 'Directo' WHEN 'GOOGLE' THEN 'Google' WHEN 'BOOKING_COM' THEN 'Booking.com' WHEN 'TRIPADVISOR' THEN 'TripAdvisor' ELSE r.canal END`;
+
 export interface PerfilHuespedRow {
   id_perfil: number;
   id_huesped: string;
@@ -429,29 +450,19 @@ export async function avanzarReclamo(
   }
 
   const nextArea = input.idArea !== undefined ? input.idArea : curr.id_area;
+  // seguimiento_reclamo es un historial inmutable: la observación se entrega al trigger por una variable de
+  // sesión (la lee fn_reclamo_seguimiento tras la migración 002; sin ella queda el registro sin observación).
+  await client.query(`SELECT set_config('app.observacion', $1, true)`, [input.observacion ?? '']);
+  void usuarioApp;
   const updRes = await client.query(
     `UPDATE g5_crm.reclamo
-     SET estado = $2,
+     SET estado = $2::varchar,
          id_area = $3,
-         fecha_cierre = CASE WHEN $2 = 'CERRADO' THEN CURRENT_TIMESTAMP ELSE fecha_cierre END
+         fecha_cierre = CASE WHEN $2::varchar = 'CERRADO' THEN CURRENT_TIMESTAMP ELSE fecha_cierre END
      WHERE id_reclamo = $1
      RETURNING id_reclamo, codigo_seguimiento, estado, id_area, fecha_cierre::text AS fecha_cierre`,
     [idReclamo, input.estado, nextArea]
   );
-
-  // Actualizar observación en el registro creado por el trigger o anotar contexto si no cambió estado
-  if (input.observacion) {
-    await client.query(
-      `UPDATE g5_crm.seguimiento_reclamo
-       SET observacion = COALESCE(observacion, $2)
-       WHERE id_seguimiento = (
-         SELECT id_seguimiento FROM g5_crm.seguimiento_reclamo
-         WHERE id_reclamo = $1 AND usuario = $3
-         ORDER BY id_seguimiento DESC LIMIT 1
-       )`,
-      [idReclamo, input.observacion, usuarioApp.slice(0, 30)]
-    );
-  }
 
   return updRes.rows[0];
 }
@@ -499,8 +510,8 @@ export async function decidirCompensacion(
 
   const res = await client.query(
     `UPDATE g5_crm.compensacion
-     SET estado = $2,
-         motivo_rechazo = CASE WHEN $2 = 'RECHAZADA' THEN $3 ELSE motivo_rechazo END,
+     SET estado = $2::varchar,
+         motivo_rechazo = CASE WHEN $2::varchar = 'RECHAZADA' THEN $3 ELSE motivo_rechazo END,
          usuario_aprobador = COALESCE(usuario_aprobador, $4),
          fecha_resolucion = CASE WHEN $5::boolean THEN COALESCE(fecha_resolucion, CURRENT_TIMESTAMP) ELSE fecha_resolucion END,
          fecha_notificacion = CASE WHEN $6::boolean THEN COALESCE(fecha_notificacion, CURRENT_TIMESTAMP) ELSE fecha_notificacion END
@@ -603,8 +614,7 @@ export async function listOpiniones(client: PoolClient, limit: number, offset: n
        o.id_estadia::text AS id_estadia, o.id_area, ar.nombre AS area_nombre,
        o.tipo_opinion, o.texto_seudonimizado, o.sentimiento_ia, o.confianza::text AS confianza,
        o.motivo, o.es_critica, o.estado_clasificacion, o.fecha_recepcion::text AS fecha_recepcion,
-       r.calificacion, r.titulo, r.canal, r.respuesta_hotel, r.fecha_respuesta::text AS fecha_respuesta,
-       r.usuario_respuesta,
+       r.calificacion, r.titulo, ${RESENA_CANAL_SQL} AS canal, r.respuesta_hotel, r.fecha_respuesta::text AS fecha_respuesta,
        e.puntaje, e.recomendaria
      FROM g5_crm.opinion o
      JOIN g5_crm.perfil_huesped p ON p.id_perfil = o.id_perfil
@@ -643,7 +653,7 @@ export async function createOpinionConSubtipo(
        id_perfil, id_estadia, id_area, tipo_opinion, texto_seudonimizado,
        sentimiento_ia, confianza, motivo, es_critica, estado_clasificacion
      )
-     VALUES ($1, $2::bigint, $3, $4, $5, $6, $7, $8, $9, CASE WHEN $6 IS NOT NULL THEN 'CLASIFICADA' ELSE 'PENDIENTE' END)
+     VALUES ($1, $2::bigint, $3, $4, $5, $6, $7, $8, $9, CASE WHEN $6::varchar IS NOT NULL THEN 'CLASIFICADA' ELSE 'PENDIENTE' END)
      RETURNING id_opinion`,
     [
       input.idPerfil,
@@ -664,7 +674,7 @@ export async function createOpinionConSubtipo(
     await client.query(
       `INSERT INTO g5_crm.resena (id_opinion, tipo_opinion, calificacion, titulo, canal)
        VALUES ($1, 'RESENA', $2, $3, $4)`,
-      [idOpinion, input.calificacion ?? 5, input.titulo ?? null, input.canal ?? 'Directo']
+      [idOpinion, input.calificacion ?? 5, input.titulo ?? null, RESENA_CANAL_TO_DB[input.canal ?? 'Directo'] ?? 'DIRECTO']
     );
   } else {
     await client.query(
@@ -683,14 +693,15 @@ export async function responderResena(
   respuestaHotel: string,
   usuarioRespuesta: string
 ) {
+  // La tabla g5_crm.resena no guarda quién responde; ese dato queda en la auditoría de la base.
+  void usuarioRespuesta;
   const res = await client.query(
     `UPDATE g5_crm.resena
      SET respuesta_hotel = $2,
-         fecha_respuesta = CURRENT_TIMESTAMP,
-         usuario_respuesta = $3
+         fecha_respuesta = CURRENT_TIMESTAMP
      WHERE id_opinion = $1
-     RETURNING id_opinion, canal, respuesta_hotel, fecha_respuesta::text AS fecha_respuesta, usuario_respuesta`,
-    [idOpinion, respuestaHotel, usuarioRespuesta.slice(0, 60)]
+     RETURNING id_opinion, canal, respuesta_hotel, fecha_respuesta::text AS fecha_respuesta`,
+    [idOpinion, respuestaHotel]
   );
   if (!res.rows[0]) {
     throw new NotFoundError('Reseña no encontrada para registrar respuesta.');
@@ -704,16 +715,19 @@ export async function listSolicitudesHuesped(client: PoolClient, limit: number, 
 
   const res = await client.query(
     `SELECT
-       s.id_solicitud_huesped, s.codigo, s.id_perfil,
+       s.id_solicitud AS id_solicitud_huesped, s.codigo, s.id_perfil,
        (h.nombres || ' ' || h.apellidos) AS huesped_nombre,
-       s.id_estadia::text AS id_estadia, s.id_habitacion::text AS id_habitacion,
-       s.numero_habitacion, s.tipo, s.area_destino, s.origen, s.descripcion,
-       s.estado, s.notas_resolucion, s.fecha_creacion::text AS fecha_creacion,
-       s.fecha_atencion::text AS fecha_atencion
+       s.id_estadia::text AS id_estadia, est.id_habitacion::text AS id_habitacion,
+       hab.numero AS numero_habitacion, s.tipo,
+       ${SOLICITUD_AREA_SQL} AS area_destino, ${SOLICITUD_ORIGEN_SQL} AS origen, s.descripcion,
+       s.estado, NULL::text AS notas_resolucion, s.fecha_solicitud::text AS fecha_creacion,
+       s.fecha_cierre::text AS fecha_atencion
      FROM g5_crm.solicitud_huesped s
      JOIN g5_crm.perfil_huesped p ON p.id_perfil = s.id_perfil
      JOIN g1_reservas.huesped h ON h.id_huesped = p.id_huesped
-     ORDER BY s.fecha_creacion DESC, s.id_solicitud_huesped DESC
+     LEFT JOIN g1_reservas.estadia est ON est.id_estadia = s.id_estadia
+     LEFT JOIN g1_reservas.habitacion hab ON hab.id_habitacion = est.id_habitacion
+     ORDER BY s.fecha_solicitud DESC, s.id_solicitud DESC
      LIMIT $1 OFFSET $2`,
     [limit, offset]
   );
@@ -733,25 +747,19 @@ export async function createSolicitudHuesped(
     descripcion: string;
   }
 ) {
+  // El código SOL-AAAA-nnnnn y el área responsable los asigna la base (default y trigger).
+  // La habitación se deduce de la estadía; no existe columna propia.
+  const area = SOLICITUD_AREA_TO_DB[input.areaDestino];
+  const origen = SOLICITUD_ORIGEN_TO_DB[input.origen];
+  if (!area || !origen) {
+    throw new DomainRuleError('Área de destino u origen no válidos para la solicitud de huésped.');
+  }
   const res = await client.query(
-    `INSERT INTO g5_crm.solicitud_huesped (
-       codigo, id_perfil, id_estadia, id_habitacion, numero_habitacion,
-       tipo, area_destino, origen, descripcion, estado
-     )
-     VALUES ('', $1, $2::bigint, $3::bigint, $4, $5, $6, $7, $8, 'REGISTRADA')
-     RETURNING id_solicitud_huesped, codigo, id_perfil, id_estadia::text AS id_estadia,
-               id_habitacion::text AS id_habitacion, numero_habitacion,
-               tipo, area_destino, origen, descripcion, estado, fecha_creacion::text AS fecha_creacion`,
-    [
-      input.idPerfil,
-      input.idEstadia ?? null,
-      input.idHabitacion ?? null,
-      input.numeroHabitacion ?? null,
-      input.tipo,
-      input.areaDestino,
-      input.origen,
-      input.descripcion,
-    ]
+    `INSERT INTO g5_crm.solicitud_huesped (id_perfil, id_estadia, tipo, area_destino, origen, descripcion, estado)
+     VALUES ($1, $2::bigint, $3, $4, $5, $6, 'REGISTRADA')
+     RETURNING id_solicitud AS id_solicitud_huesped, codigo, id_perfil, id_estadia::text AS id_estadia,
+               tipo, area_destino, origen, descripcion, estado, fecha_solicitud::text AS fecha_creacion`,
+    [input.idPerfil, input.idEstadia ?? null, input.tipo, area, origen, input.descripcion]
   );
   return res.rows[0];
 }
@@ -762,14 +770,15 @@ export async function updateSolicitudHuespedEstado(
   estado: 'REGISTRADA' | 'DERIVADA' | 'EN_ATENCION' | 'ATENDIDA' | 'CANCELADA',
   notasResolucion?: string | null
 ) {
+  // La tabla no guarda notas de resolución; el trigger de la base fija fecha_cierre al atender o cancelar.
+  void notasResolucion;
   const res = await client.query(
     `UPDATE g5_crm.solicitud_huesped
-     SET estado = $2,
-         notas_resolucion = COALESCE($3, notas_resolucion),
-         fecha_atencion = CASE WHEN $2 IN ('ATENDIDA', 'CANCELADA') THEN COALESCE(fecha_atencion, CURRENT_TIMESTAMP) ELSE fecha_atencion END
-     WHERE id_solicitud_huesped = $1
-     RETURNING id_solicitud_huesped, codigo, estado, notas_resolucion, fecha_atencion::text AS fecha_atencion`,
-    [idSolicitud, estado, notasResolucion ?? null]
+     SET estado = $2
+     WHERE id_solicitud = $1
+     RETURNING id_solicitud AS id_solicitud_huesped, codigo, estado, NULL::text AS notas_resolucion,
+               fecha_cierre::text AS fecha_atencion`,
+    [idSolicitud, estado]
   );
   if (!res.rows[0]) {
     throw new NotFoundError('Solicitud de huésped no encontrada.');

@@ -70,7 +70,7 @@ export async function listHabitaciones(
        h.numero,
        h.piso,
        h.estado_registro,
-       COALESCE(h.caracteristicas, '[]'::jsonb) AS caracteristicas,
+       COALESCE(to_jsonb(th.caracteristicas), '[]'::jsonb) AS caracteristicas,
        th.id_tipo_habitacion::text AS id_tipo_habitacion,
        th.nombre AS tipo_nombre,
        th.capacidad,
@@ -364,7 +364,9 @@ export async function listReservas(client: PoolClient, params: PaginationParams)
                'id_habitacion', dr.id_habitacion::text,
                'numero_habitacion', hab.numero,
                'precio_noche', dr.precio_noche::text,
-               'cantidad_huespedes', dr.cantidad_huespedes
+               'cantidad_huespedes', dr.cantidad_huespedes,
+               'id_estadia', (SELECT e.id_estadia::text FROM g1_reservas.estadia e WHERE e.id_detalle_reserva = dr.id_detalle_reserva),
+               'estado_estadia', (SELECT e.estado FROM g1_reservas.estadia e WHERE e.id_detalle_reserva = dr.id_detalle_reserva)
              )
            )
            FROM g1_reservas.detalle_reserva dr

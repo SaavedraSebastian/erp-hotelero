@@ -26,7 +26,7 @@ import iaDemandaHtml from '../../html/modules/servicios/ia-demanda.html?raw';
 import { formatCurrency } from '../utils/formatters.js';
 import { getRoute, navigateToView } from '../core/router.js';
 import { erpStore } from '../core/store.js';
-import { TODAY } from '../data/seed-data.js';
+import { TODAY } from '../data/empty-state.js';
 import {
   AccessDeniedCard,
   EmptyState,
@@ -117,42 +117,50 @@ export function renderServiciosPOSModule() {
   }
 
   function openProductModal(editing) {
+    const cat = erpStore.state?.catalogs ?? {};
+    const articles = erpStore.state?.inventory ?? [];
     const initial = editing
       ? { ...editing }
-      : { sku: 'PRD-NEW', name: '', category: 'Restaurante', price: 32, cost: 11, stockControl: 'Receta', available: true };
+      : { name: '', posId: cat.posPoints?.[0]?.id || '', categoryId: cat.menuCategories?.[0]?.id || '', itemType: 'plato', price: '', linkedInventoryItemId: '' };
     openModal({
-      title: editing ? `Editar Producto ${editing.sku}` : 'Nuevo Producto en Catálogo',
+      title: editing ? `Editar Producto · ${editing.name}` : 'Nuevo Producto en Catálogo',
+      subtitle: editing ? 'El punto de venta y el tipo no se modifican. Un precio nuevo queda registrado en el historial de precios.' : undefined,
       renderBody: (close) => {
         const form = cloneModal('modal-producto');
-        const skuIn = getRef(form, 'sku');
         const nameIn = getRef(form, 'name');
+        const posSel = getRef(form, 'pos');
         const catSel = getRef(form, 'category');
+        const typeSel = getRef(form, 'itemType');
         const priceIn = getRef(form, 'price');
-        const costIn = getRef(form, 'cost');
-        const ctrlSel = getRef(form, 'stockControl');
+        const artSel = getRef(form, 'article');
 
-        skuIn.value = initial.sku || '';
+        // Las opciones válidas son las de la base de datos.
+        mount(posSel, (cat.posPoints ?? []).map((p) => h('option', { value: p.id }, p.name)));
+        mount(catSel, (cat.menuCategories ?? []).map((c) => h('option', { value: c.id }, c.name)));
+        mount(artSel, [h('option', { value: '' }, 'Ninguno (se descuenta por receta)'), ...articles.map((a) => h('option', { value: a.id }, `${a.name} (${a.unit})`))]);
+
         nameIn.value = initial.name || '';
-        catSel.value = initial.category || 'Restaurante';
-        priceIn.value = String(initial.price ?? 0);
-        costIn.value = String(initial.cost ?? 0);
-        ctrlSel.value = initial.stockControl || 'Receta';
+        posSel.value = initial.posId || '';
+        catSel.value = initial.categoryId || '';
+        typeSel.value = initial.itemType || 'plato';
+        priceIn.value = initial.price === '' || initial.price == null ? '' : String(initial.price);
+        artSel.value = initial.linkedInventoryItemId || '';
+        if (editing) for (const el of [posSel, typeSel]) el.disabled = true;
 
         getRef(form, 'cancel-btn')?.addEventListener('click', close);
-        form.addEventListener('submit', (e) => {
+        form.addEventListener('submit', async (e) => {
           e.preventDefault();
           if (!nameIn.value.trim()) return;
-          erpStore.upsertProduct({
-            ...initial,
-            sku: skuIn.value.trim(),
+          const res = await erpStore.upsertProduct({
+            id: editing?.id,
             name: nameIn.value.trim(),
-            category: catSel.value,
+            posId: posSel.value,
+            categoryId: catSel.value,
+            itemType: typeSel.value,
             price: Number(priceIn.value),
-            cost: Number(costIn.value),
-            stockControl: ctrlSel.value,
-            available: initial.available !== false,
+            articleId: artSel.value || null,
           });
-          close();
+          if (res?.ok) close(); // si el servidor rechaza, el formulario queda abierto para corregir
         });
         return form;
       },
@@ -160,35 +168,44 @@ export function renderServiciosPOSModule() {
   }
 
   function openServiceModal(editing) {
+    const cat = erpStore.state?.catalogs ?? {};
     const initial = editing
       ? { ...editing }
-      : { code: `SRV-NEW-${Date.now().toString().slice(-2)}`, name: '', area: 'Spa', cost: 40, durationMinutes: 60, price: 180, active: true, description: '' };
+      : { name: '', posId: cat.posPoints?.[0]?.id || '', categoryId: cat.menuCategories?.[0]?.id || '', price: '', durationMinutes: undefined };
     openModal({
       title: editing ? `Editar Servicio · ${editing.name}` : 'Nuevo Servicio Complementario',
+      subtitle: editing ? 'El punto de venta no se modifica. Un precio nuevo queda registrado en el historial de precios.' : undefined,
       renderBody: (close) => {
         const form = cloneModal('modal-servicio');
         const nameIn = getRef(form, 'name');
-        const areaSel = getRef(form, 'area');
+        const posSel = getRef(form, 'pos');
+        const catSel = getRef(form, 'category');
         const durIn = getRef(form, 'duration');
         const priceIn = getRef(form, 'price');
 
+        mount(posSel, (cat.posPoints ?? []).map((p) => h('option', { value: p.id }, p.name)));
+        mount(catSel, (cat.menuCategories ?? []).map((c) => h('option', { value: c.id }, c.name)));
+
         nameIn.value = initial.name || '';
-        areaSel.value = initial.area || 'Spa';
+        posSel.value = initial.posId || '';
+        catSel.value = initial.categoryId || '';
         durIn.value = initial.durationMinutes ? String(initial.durationMinutes) : '';
-        priceIn.value = String(initial.price ?? 0);
+        priceIn.value = initial.price === '' || initial.price == null ? '' : String(initial.price);
+        if (editing) posSel.disabled = true;
 
         getRef(form, 'cancel-btn')?.addEventListener('click', close);
-        form.addEventListener('submit', (e) => {
+        form.addEventListener('submit', async (e) => {
           e.preventDefault();
           if (!nameIn.value.trim()) return;
-          erpStore.upsertService({
-            ...initial,
+          const res = await erpStore.upsertService({
+            id: editing?.id,
             name: nameIn.value.trim(),
-            area: areaSel.value,
+            posId: posSel.value,
+            categoryId: catSel.value,
             durationMinutes: durIn.value ? Number(durIn.value) : undefined,
             price: Number(priceIn.value),
           });
-          close();
+          if (res?.ok) close();
         });
         return form;
       },
@@ -221,43 +238,47 @@ export function renderServiciosPOSModule() {
   }
 
   function openInventoryCreateModal() {
+    const cat = erpStore.state?.catalogs ?? {};
     openModal({
-      title: 'Registrar Nuevo Insumo en Almacén',
+      title: 'Registrar Nuevo Artículo en Almacén',
+      subtitle: 'Con stock inicial se crea su primer lote y su movimiento en el kardex.',
       renderBody: (close) => {
         const form = cloneModal('modal-insumo');
-        const skuIn = getRef(form, 'sku');
         const nameIn = getRef(form, 'name');
         const catSel = getRef(form, 'category');
-        const unitIn = getRef(form, 'unit');
+        const unitSel = getRef(form, 'unit');
         const stockIn = getRef(form, 'stock');
         const minIn = getRef(form, 'min-stock');
         const costIn = getRef(form, 'unit-cost');
-        const locIn = getRef(form, 'location');
+        const expiresChk = getRef(form, 'expires');
+        const expiryIn = getRef(form, 'expiry');
+        const warnIn = getRef(form, 'warn-days');
 
-        skuIn.value = 'ALM-NEW';
-        unitIn.value = 'Unidades';
-        stockIn.value = '20';
-        minIn.value = '10';
-        costIn.value = '15';
-        locIn.value = 'Almacén Central';
+        mount(catSel, (cat.stockCategories ?? []).map((c) => h('option', { value: c.id }, c.name)));
+        mount(unitSel, (cat.units ?? []).map((u) => h('option', { value: u.id }, `${u.name} (${u.symbol})`)));
+        const syncExpiry = () => {
+          expiryIn.disabled = !expiresChk.checked;
+          warnIn.disabled = !expiresChk.checked;
+        };
+        expiresChk.addEventListener('change', syncExpiry);
+        syncExpiry();
 
         getRef(form, 'cancel-btn')?.addEventListener('click', close);
-        form.addEventListener('submit', (e) => {
+        form.addEventListener('submit', async (e) => {
           e.preventDefault();
           if (!nameIn.value.trim()) return;
-          erpStore.upsertInventoryItem({
-            sku: skuIn.value.trim(),
+          const res = await erpStore.upsertInventoryItem({
             name: nameIn.value.trim(),
-            category: catSel.value,
-            unit: unitIn.value.trim(),
-            stock: Number(stockIn.value),
-            minStock: Number(minIn.value),
-            unitCost: Number(costIn.value),
-            location: locIn.value.trim(),
-            expiryDate: '2027-06-30',
-            batch: 'L-2611',
+            categoryId: catSel.value,
+            unitId: unitSel.value,
+            stock: Number(stockIn.value || 0),
+            minStock: Number(minIn.value || 0),
+            unitCost: Number(costIn.value || 0),
+            expires: expiresChk.checked,
+            expiryDate: expiryIn.value,
+            warnDays: Number(warnIn.value || 0),
           });
-          close();
+          if (res?.ok) close();
         });
         return form;
       },
@@ -271,29 +292,20 @@ export function renderServiciosPOSModule() {
         const form = cloneModal('modal-proveedor');
         const nameIn = getRef(form, 'name');
         const rucIn = getRef(form, 'ruc');
-        const catIn = getRef(form, 'category');
-        const contactIn = getRef(form, 'contact');
         const phoneIn = getRef(form, 'phone');
-        const leadIn = getRef(form, 'lead-time');
-
-        catIn.value = 'Alimentos Perecibles';
-        leadIn.value = '2';
+        const emailIn = getRef(form, 'email');
 
         getRef(form, 'cancel-btn')?.addEventListener('click', close);
-        form.addEventListener('submit', (e) => {
+        form.addEventListener('submit', async (e) => {
           e.preventDefault();
           if (!nameIn.value.trim()) return;
-          erpStore.upsertSupplier({
+          const res = await erpStore.upsertSupplier({
             name: nameIn.value.trim(),
             ruc: rucIn.value.trim(),
-            category: catIn.value.trim(),
-            contactName: contactIn.value.trim(),
             phone: phoneIn.value.trim(),
-            leadTimeDays: Number(leadIn.value),
-            rating: 4.7,
-            active: true,
+            email: emailIn.value.trim(),
           });
-          close();
+          if (res?.ok) close(); // si el servidor rechaza (p. ej. RUC duplicado), el formulario queda abierto
         });
         return form;
       },
@@ -371,35 +383,28 @@ export function renderServiciosPOSModule() {
 
         mount(prodSel, state.products.map((p) => h('option', { value: p.id }, `${p.name} (${formatCurrency(p.price)})`)));
         mount(ing1Sel, state.inventory.map((i) => h('option', { value: i.id }, `${i.name} (${i.unit})`)));
-        mount(ing2Sel, state.inventory.map((i) => h('option', { value: i.id }, `${i.name} (${i.unit})`)));
+        mount(ing2Sel, [h('option', { value: '' }, 'Ninguno'), ...state.inventory.map((i) => h('option', { value: i.id }, `${i.name} (${i.unit})`))]);
 
-        saleIn.value = String(state.products[0]?.price || 48);
-        if (state.inventory[0]) ing1Sel.value = state.inventory[0].id;
-        ing1Qty.value = '0.25';
-        if (state.inventory[1]) ing2Sel.value = state.inventory[1].id;
-        ing2Qty.value = '0.15';
-
-        prodSel.addEventListener('change', () => {
+        const syncPrice = () => {
           const p = state.products.find((x) => x.id === prodSel.value);
-          if (p) saleIn.value = String(p.price);
-        });
+          saleIn.value = p ? String(p.price) : '';
+        };
+        prodSel.addEventListener('change', syncPrice);
+        syncPrice();
 
         getRef(form, 'cancel-btn')?.addEventListener('click', close);
-        form.addEventListener('submit', (e) => {
+        form.addEventListener('submit', async (e) => {
           e.preventDefault();
           const prod = state.products.find((p) => p.id === prodSel.value);
           const i1 = state.inventory.find((i) => i.id === ing1Sel.value);
           const i2 = state.inventory.find((i) => i.id === ing2Sel.value);
           if (!prod || !i1) return;
-          const ingredients = [{ inventoryItemId: i1.id, itemName: i1.name, quantity: Number(ing1Qty.value), unit: i1.unit, unitCost: i1.unitCost }];
+          const ingredients = [{ inventoryItemId: i1.id, quantity: Number(ing1Qty.value) }];
           if (i2 && i2.id !== i1.id && Number(ing2Qty.value) > 0) {
-            ingredients.push({ inventoryItemId: i2.id, itemName: i2.name, quantity: Number(ing2Qty.value), unit: i2.unit, unitCost: i2.unitCost });
+            ingredients.push({ inventoryItemId: i2.id, quantity: Number(ing2Qty.value) });
           }
-          const recipeCost = Number(ingredients.reduce((s, x) => s + x.quantity * x.unitCost, 0).toFixed(2));
-          const sp = Number(saleIn.value);
-          const marginPct = sp > 0 ? Math.round(((sp - recipeCost) / sp) * 100) : 0;
-          erpStore.upsertRecipe({ productId: prod.id, productName: prod.name, salePrice: sp, recipeCost, marginPct, ingredients });
-          close();
+          const res = await erpStore.upsertRecipe({ productId: prod.id, productName: prod.name, ingredients });
+          if (res?.ok) close();
         });
         return form;
       },
@@ -466,15 +471,17 @@ export function renderServiciosPOSModule() {
           tabBody,
           'tbody',
           filtered.map((p) => {
-            const margin = p.price > 0 ? Math.round(((p.price - p.cost) / p.price) * 100) : 0;
+            // El costo sale de la receta vigente o del artículo ligado; sin ninguno de los dos no hay costo ni margen.
+            const hasCost = p.cost != null;
+            const margin = hasCost && p.price > 0 ? Math.round(((p.price - p.cost) / p.price) * 100) : null;
             const row = clone('fila-producto');
             setText(row, 'code', p.sku);
             setText(row, 'name', p.name);
             setText(row, 'category', p.category);
-            setText(row, 'stock', p.stockControl || 'Receta');
-            setText(row, 'cost', formatCurrency(p.cost));
+            setText(row, 'stock', p.stockControl || 'Sin control');
+            setText(row, 'cost', hasCost ? formatCurrency(p.cost) : '—');
             setText(row, 'price', formatCurrency(p.price));
-            setText(row, 'margin', `${margin}%`);
+            setText(row, 'margin', margin == null ? '—' : `${margin}%`);
             if (canEditCurrentTab) {
               row.style.cursor = 'pointer';
               row.addEventListener('click', () => openProductModal(p));
@@ -522,7 +529,7 @@ export function renderServiciosPOSModule() {
           setText(
             card,
             'meta',
-            `Costo operativo: ${formatCurrency(srv.cost ?? 0)}${srv.durationMinutes ? ` · ${srv.durationMinutes} min` : ''}`
+            `${srv.pointOfSale || srv.area || ''}${srv.durationMinutes ? ` · ${srv.durationMinutes} min` : ''}`
           );
           if (canEditCurrentTab) {
             card.style.cursor = 'pointer';
@@ -586,13 +593,14 @@ export function renderServiciosPOSModule() {
         });
       });
 
-      const showTable = m3Ui.posPaymentMode === 'Pago Directo' && (m3Ui.posOrigin === 'Restaurante' || m3Ui.posOrigin === 'Bar');
+      const showTable = m3Ui.posOrigin === 'Restaurante' || m3Ui.posOrigin === 'Bar';
       setVisible(tabBody, 'table-wrap', showTable);
       const tableSel = getRef(tabBody, 'table-select');
       mount(
         tableSel,
         state.tables.map((t) => h('option', { value: t.number, selected: m3Ui.posTable === t.number }, `${t.number} · ${t.zone} (${t.status})`))
       );
+      if (!state.tables.some((t) => t.number === m3Ui.posTable)) m3Ui.posTable = state.tables[0]?.number || '';
       tableSel.value = m3Ui.posTable;
       tableSel.addEventListener('change', (e) => {
         m3Ui.posTable = e.target.value;
@@ -637,9 +645,9 @@ export function renderServiciosPOSModule() {
       if (submitBtn && canEditCurrentTab) {
         mountRef(tabBody, 'submit-icon', icon('check', 'w-4'));
         setText(tabBody, 'submit-label', m3Ui.posPaymentMode === 'Cargo a Habitación' ? 'Confirmar y Cargar a Habitación' : 'Registrar Venta Directa');
-        submitBtn.addEventListener('click', () => {
+        submitBtn.addEventListener('click', async () => {
           const targetRoom = selectedFolio ? state.rooms.find((r) => r.number === selectedFolio.roomNumber) : null;
-          const res = erpStore.createPOSOrder({
+          const res = await erpStore.createPOSOrder({
             source: m3Ui.posOrigin,
             tableNumber: m3Ui.posOrigin === 'Restaurante' || m3Ui.posOrigin === 'Bar' ? m3Ui.posTable : undefined,
             roomId: m3Ui.posPaymentMode === 'Cargo a Habitación' ? targetRoom?.id : undefined,
@@ -663,17 +671,31 @@ export function renderServiciosPOSModule() {
         state.tables.map((tb) => {
           const card = clone('card-mesa');
           setText(card, 'title', `Mesa ${tb.number}`);
-          setText(card, 'meta', `${tb.zone} · ${tb.seats} personas`);
+          setText(card, 'meta', tb.seats > 0 ? `${tb.zone} · ${tb.seats} personas` : tb.zone);
           mountRef(card, 'status', StatusText({ label: tb.status, variant: getStatusVariant(tb.status) }));
           if (tb.roomNumber) {
             setText(card, 'room-label', `Huésped Hab. ${tb.roomNumber}`);
             setVisible(card, 'room-label', true);
           }
-          setVisible(card, 'status-select', canEditCurrentTab);
+          // La ocupación depende de las comandas abiertas; lo único editable es activar o desactivar la mesa.
+          setVisible(card, 'toggle-btn', canEditCurrentTab);
           if (canEditCurrentTab) {
-            const sel = getRef(card, 'status-select');
-            sel.value = tb.status;
-            sel.addEventListener('change', (e) => erpStore.updateTableStatus(tb.id, e.target.value));
+            const btn = getRef(card, 'toggle-btn');
+            const inactive = tb.status === 'Inactiva';
+            btn.textContent = inactive ? 'Activar mesa' : 'Desactivar mesa';
+            if (tb.status === 'Ocupada') {
+              btn.disabled = true;
+              btn.title = 'Tiene una comanda abierta: ciérrala o cancélala primero.';
+            }
+            btn.addEventListener('click', () => {
+              if (inactive) {
+                erpStore.updateTableStatus(tb.id, 'Libre');
+                return;
+              }
+              const reason = window.prompt(`Motivo para desactivar la mesa ${tb.number}:`, '');
+              if (reason === null) return;
+              erpStore.updateTableStatus(tb.id, 'Inactiva', reason);
+            });
           }
           return card;
         })
@@ -693,7 +715,7 @@ export function renderServiciosPOSModule() {
           setText(row, 'items', ord.items.map((i) => `${i.quantity}x ${i.name}`).join(', '));
           setText(row, 'total', formatCurrency(ord.total));
           mountRef(row, 'status', StatusText({ label: ord.status, variant: getStatusVariant(ord.status) }));
-          const showAction = canEditCurrentTab && ord.status !== 'Entregado' && ord.status !== 'Cobrado';
+          const showAction = canEditCurrentTab && !['Entregado', 'Cobrado', 'Cancelada', 'Anulado', 'Descartado'].includes(ord.status);
           setVisible(row, 'action-btn', showAction);
           if (showAction) {
             const btn = getRef(row, 'action-btn');
@@ -756,7 +778,7 @@ export function renderServiciosPOSModule() {
               setText(row, 'title', `${ord.code} · Hab. ${ord.roomNumber || '—'} (${ord.guestName || '—'})`);
               setText(row, 'items', `${ord.items.map((i) => `${i.quantity}x ${i.name}`).join(', ')} · ${formatCurrency(ord.total)}`);
               mountRef(row, 'status', StatusText({ label: ord.status, variant: getStatusVariant(ord.status) }));
-              const showDeliver = canEditCurrentTab && ord.status !== 'Entregado' && ord.status !== 'Cobrado';
+              const showDeliver = canEditCurrentTab && !['Entregado', 'Cobrado', 'Cancelada', 'Anulado', 'Descartado'].includes(ord.status);
               setVisible(row, 'deliver-btn', showDeliver);
               if (showDeliver) {
                 getRef(row, 'deliver-btn').addEventListener('click', () => erpStore.updatePOSOrderStatus(ord.id, 'Entregado'));
@@ -1033,9 +1055,9 @@ export function renderServiciosPOSModule() {
         state.suppliers.map((sup) => {
           const card = clone('card-proveedor');
           setText(card, 'name', sup.name);
-          setText(card, 'rating', `★ ${sup.rating ?? 4.7}`);
-          setText(card, 'ruc-cat', `RUC ${sup.ruc} · ${sup.category}`);
-          setText(card, 'contact', `Contacto: ${sup.contactName} · ${sup.phone} · Entrega: ${sup.leadTimeDays} día(s)`);
+          setText(card, 'rating', sup.rating == null ? 'Sin calificación' : `★ ${sup.rating}`);
+          setText(card, 'ruc-cat', `RUC ${sup.ruc || '—'} · ${sup.category || '—'}`);
+          setText(card, 'contact', `Contacto: ${sup.contactName || '—'} · ${sup.phone || '—'} · Entrega: ${sup.leadTimeDays > 0 ? `${sup.leadTimeDays} día(s)` : '—'}`);
           return card;
         })
       );

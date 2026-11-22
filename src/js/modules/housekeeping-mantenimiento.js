@@ -167,11 +167,13 @@ export function renderHousekeepingModule() {
         const form = cloneModal('modal-completar-ot');
         const notes = getRef(form, 'notes');
         const parts = getRef(form, 'parts');
+        const hours = getRef(form, 'hours');
+        const cost = getRef(form, 'cost');
         getRef(form, 'cancel-btn')?.addEventListener('click', close);
-        form.addEventListener('submit', (e) => {
+        form.addEventListener('submit', async (e) => {
           e.preventDefault();
-          erpStore.completeWorkOrder(wo.id, notes.value || 'Trabajo ejecutado y validado', parts.value);
-          close();
+          const res = await erpStore.completeWorkOrder(wo.id, notes.value, parts.value, hours.value, cost.value);
+          if (res?.ok) close(); // si el servidor rechaza, el formulario queda abierto para corregir
         });
         return form;
       },
@@ -180,39 +182,32 @@ export function renderHousekeepingModule() {
 
   function openPreventiveModal(prefillAsset) {
     const state = erpStore.state;
-    const maintStaff = state.staff.filter((s) => s.area === 'Mantenimiento');
     openModal({
       title: 'Programar Mantenimiento Preventivo',
       renderBody: (close) => {
         const form = cloneModal('modal-preventivo');
-        const assetName = getRef(form, 'assetName');
-        const location = getRef(form, 'location');
+        const assetSel = getRef(form, 'asset');
         const freqSel = getRef(form, 'frequency');
         const nextDate = getRef(form, 'nextDate');
-        const staffSel = getRef(form, 'assignedStaffId');
         const notes = getRef(form, 'notes');
 
-        mount(staffSel, maintStaff.map((s) => h('option', { value: s.id }, s.name)));
-        assetName.value = prefillAsset ? `${prefillAsset.name} (${prefillAsset.code})` : (state.assets[0]?.name || '');
-        location.value = prefillAsset ? `Hab./Área ${prefillAsset.roomNumber}` : 'Azotea Técnica';
-        nextDate.value = '2026-11-25';
-        notes.value = prefillAsset
-          ? `Revisión preventiva recomendada (${prefillAsset.hoursUsed}h acumuladas, riesgo ${prefillAsset.predictedFailureRisk}%).`
-          : 'Limpieza de filtros y verificación técnica';
+        mount(assetSel, state.assets.map((a) => h('option', { value: a.id }, `${a.name} (${a.code}) · ${a.roomNumber || 'Áreas comunes'}`)));
+        if (prefillAsset) {
+          assetSel.value = prefillAsset.id;
+          const risk = prefillAsset.predictedFailureRisk;
+          notes.value = `Revisión preventiva recomendada (${prefillAsset.hoursUsed} h acumuladas${risk != null ? `, riesgo ${risk}%` : ''})`;
+        }
 
         getRef(form, 'cancel-btn')?.addEventListener('click', close);
-        form.addEventListener('submit', (e) => {
+        form.addEventListener('submit', async (e) => {
           e.preventDefault();
-          if (!assetName.value.trim()) return;
-          erpStore.addPreventiveSchedule({
-            assetName: assetName.value.trim(),
-            location: location.value.trim() || 'Áreas Comunes',
+          const res = await erpStore.addPreventiveSchedule({
+            assetId: assetSel.value,
             frequency: freqSel.value,
             nextDate: nextDate.value,
-            assignedStaffId: staffSel.value || 'stf-4',
-            notes: notes.value.trim(),
+            task: notes.value.trim(),
           });
-          close();
+          if (res?.ok) close();
         });
         return form;
       },
@@ -220,60 +215,59 @@ export function renderHousekeepingModule() {
   }
 
   function openAssetModal(editingAsset) {
-    const formState = editingAsset
+    const cat = erpStore.state?.catalogs ?? {};
+    const rooms = erpStore.state?.rooms ?? [];
+    const initial = editingAsset
       ? { ...editingAsset }
-      : {
-          code: 'EQ-NEW-01',
-          name: '',
-          category: 'Climatización',
-          roomNumber: '202',
-          brand: 'Daikin',
-          purchaseDate: '2026-01-15',
-          hoursUsed: 0,
-          condition: 'Óptimo',
-          predictedFailureRisk: 10,
-        };
+      : { name: '', typeId: cat.assetTypes?.[0]?.id || '', brand: '', model: '', purchaseDate: '', hoursUsed: 0, condition: 'Operativo' };
     openModal({
       title: editingAsset ? `Editar Activo ${editingAsset.code}` : 'Registrar Nuevo Activo Hotelero',
+      subtitle: editingAsset ? 'Tipo, ubicación y fecha de instalación no se modifican.' : undefined,
       renderBody: (close) => {
         const form = cloneModal('modal-activo');
-        const code = getRef(form, 'code');
         const name = getRef(form, 'name');
-        const category = getRef(form, 'category');
-        const roomNumber = getRef(form, 'roomNumber');
+        const typeSel = getRef(form, 'type');
+        const locSel = getRef(form, 'location');
         const brand = getRef(form, 'brand');
-        const purchaseDate = getRef(form, 'purchaseDate');
+        const model = getRef(form, 'model');
+        const installDate = getRef(form, 'installDate');
         const hoursUsed = getRef(form, 'hoursUsed');
         const condition = getRef(form, 'condition');
-        const risk = getRef(form, 'predictedFailureRisk');
 
-        code.value = formState.code;
-        name.value = formState.name;
-        category.value = formState.category;
-        roomNumber.value = formState.roomNumber || '';
-        brand.value = formState.brand || '';
-        purchaseDate.value = formState.purchaseDate || '2026-01-15';
-        hoursUsed.value = String(formState.hoursUsed ?? 0);
-        condition.value = formState.condition || 'Óptimo';
-        risk.value = String(formState.predictedFailureRisk ?? 10);
+        mount(typeSel, (cat.assetTypes ?? []).map((t) => h('option', { value: t.id }, t.name)));
+        mount(locSel, [
+          ...rooms.map((r) => h('option', { value: `h:${r.id}` }, `Habitación ${r.number}`)),
+          ...(cat.areas ?? []).map((a) => h('option', { value: `a:${a.id}` }, a.name)),
+        ]);
+
+        name.value = initial.name || '';
+        typeSel.value = initial.typeId || '';
+        locSel.value = initial.roomId ? `h:${initial.roomId}` : initial.areaId ? `a:${initial.areaId}` : '';
+        brand.value = initial.brand || '';
+        model.value = initial.model || '';
+        installDate.value = initial.purchaseDate || '';
+        hoursUsed.value = String(initial.hoursUsed ?? 0);
+        condition.value = initial.condition || 'Operativo';
+        if (editingAsset) for (const el of [typeSel, locSel, installDate]) el.disabled = true;
+        else condition.disabled = true; // un activo nuevo siempre entra como Operativo
 
         getRef(form, 'cancel-btn')?.addEventListener('click', close);
-        form.addEventListener('submit', (e) => {
+        form.addEventListener('submit', async (e) => {
           e.preventDefault();
           if (!name.value.trim()) return;
-          erpStore.upsertAsset({
-            ...formState,
-            code: code.value.trim(),
+          const res = await erpStore.upsertAsset({
+            id: editingAsset?.id,
+            code: editingAsset?.code,
             name: name.value.trim(),
-            category: category.value.trim(),
-            roomNumber: roomNumber.value.trim(),
+            typeId: typeSel.value,
+            location: locSel.value,
             brand: brand.value.trim(),
-            purchaseDate: purchaseDate.value,
+            model: model.value.trim(),
+            installDate: installDate.value,
             hoursUsed: Number(hoursUsed.value || 0),
-            condition: condition.value,
-            predictedFailureRisk: Number(risk.value || 0),
+            condition: editingAsset ? condition.value : undefined,
           });
-          close();
+          if (res?.ok) close();
         });
         return form;
       },
@@ -511,7 +505,7 @@ export function renderHousekeepingModule() {
           setText(card, 'name', st.name);
           setText(card, 'specialty', st.specialty);
           mountRef(card, 'availability', StatusText({ label: st.available ? 'Disponible' : 'Ocupado', variant: st.available ? 'success' : 'warning' }));
-          setText(card, 'load-text', `${st.activeTasks} / ${st.maxCapacity} tareas (${pct}%)`);
+          setText(card, 'load-text', st.maxCapacity > 0 ? `${st.activeTasks} / ${st.maxCapacity} tareas (${pct}%)` : `${st.activeTasks} tarea(s) activa(s)`);
           const fill = getRef(card, 'progress-fill');
           if (fill) fill.style.width = `${pct}%`;
           return card;
@@ -643,9 +637,10 @@ export function renderHousekeepingModule() {
             setText(tr, 'location', `Hab./Área: ${a.roomNumber || 'Áreas Comunes'}`);
             setText(tr, 'brand-date', `${a.brand || '—'} · ${a.purchaseDate || '—'}`);
             setText(tr, 'hours', `${Number(a.hoursUsed || 0).toLocaleString('en-US')} h`);
-            mountRef(tr, 'condition', StatusText({ label: a.condition || 'Óptimo', variant: getStatusVariant(a.condition) }));
-            const risk = Number(a.predictedFailureRisk || 0);
-            const riskEl = setText(tr, 'risk', `${risk}%`);
+            mountRef(tr, 'condition', StatusText({ label: a.condition || '—', variant: getStatusVariant(a.condition) }));
+            const hasRisk = a.predictedFailureRisk != null;
+            const risk = hasRisk ? Number(a.predictedFailureRisk) : 0;
+            const riskEl = setText(tr, 'risk', hasRisk ? `${risk}%` : 'Sin evaluar');
             if (riskEl) riskEl.classList.add(risk >= 50 ? 'text-danger' : 'text-teal');
             if (canEditCurrentTab) {
               setVisible(tr, 'action', true);
