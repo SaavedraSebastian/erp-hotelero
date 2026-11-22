@@ -46,16 +46,16 @@ function emitToasts() {
   for (const fn of toastListeners) fn(storeData.toasts);
 }
 
-async function hydrateAdminDirectory(role) {
+async function hydrateAdminDirectory(role, authMode) {
   if (role !== 'admin' && role !== 'auditor') {
     storeData.directoryUsers = [];
     emit();
     return;
   }
-  const dir = await apiGetDirectory();
+  const dir = await apiGetDirectory(authMode);
   if (dir) {
-    storeData.directoryUsers = dir.users;
-    storeData.allRolePermissions = dir.permissions;
+    storeData.directoryUsers = dir.users ?? [];
+    storeData.allRolePermissions = dir.permissions ?? {};
     emit();
   }
 }
@@ -163,7 +163,7 @@ export const erpStore = {
         if (session.allRolePermissions) {
           storeData.allRolePermissions = session.allRolePermissions;
         }
-        await hydrateAdminDirectory(session.user.role);
+        await hydrateAdminDirectory(session.user.role, session.authMode);
       }
     });
 
@@ -237,7 +237,7 @@ export const erpStore = {
     }
 
     if (user.role === 'admin' || user.role === 'auditor') {
-      hydrateAdminDirectory(user.role);
+      hydrateAdminDirectory(user.role, res.data.authMode);
     } else {
       storeData.directoryUsers = [];
     }

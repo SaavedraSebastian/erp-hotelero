@@ -32,6 +32,7 @@ import {
   SearchInput,
   StatTile,
   StatusText,
+  SubmoduleBar,
   openModal,
 } from '../components/ui-components.js';
 
@@ -54,10 +55,10 @@ const M2_TABS = [
   { id: 'estado_habitaciones', label: 'Estado Habitaciones', subtitle: 'Control físico de habitaciones sincronizado con Recepción.' },
   { id: 'limpieza', label: 'Órdenes Limpieza', subtitle: 'Asignaciones por salida, estadía y limpieza profunda.' },
   { id: 'inspeccion', label: 'Inspecciones', subtitle: 'Checklist de calidad para liberar habitaciones para Check-in.' },
-  { id: 'personal', label: 'Personal Operativo', subtitle: 'Disponibilidad, turno y balance de carga del equipo operativo.' },
+  { id: 'personal', label: 'Personal', subtitle: 'Disponibilidad, turno y balance de carga del equipo operativo.' },
   { id: 'incidencias', label: 'Incidencias', subtitle: 'Reportes de averías, infraestructura y casos escalados desde CRM.' },
-  { id: 'mant_preventivo', label: 'Mant. Preventivo', subtitle: 'Calendario de revisiones periódicas para equipos críticos.' },
-  { id: 'mant_correctivo', label: 'Mant. Correctivo', subtitle: 'Órdenes de trabajo técnicas con control de costos operativos.' },
+  { id: 'mant_preventivo', label: 'Preventivo', subtitle: 'Calendario de revisiones periódicas para equipos críticos.' },
+  { id: 'mant_correctivo', label: 'Correctivo (OT)', subtitle: 'Órdenes de trabajo técnicas con control de costos operativos.' },
   { id: 'activos', label: 'Activos y Equipos', subtitle: 'Catálogo de equipos, horas acumuladas y riesgo de falla estimado.' },
   { id: 'insumos', label: 'Insumos Limpieza', subtitle: 'Stock operativo de piso y solicitudes enviadas a Almacén.' },
   { id: 'ia_operativa', label: 'IA Operativa', subtitle: 'Asignación sugerida de limpieza, alertas predictivas y asesor IA.' },
@@ -72,6 +73,7 @@ const m2Ui = {
 export function renderHousekeepingModule() {
   const root = parseHtmlTemplate(moduleShellHtml);
   const headerSlot = getRef(root, 'header-slot');
+  const tabsSlot = getRef(root, 'tabs-slot');
   const bodySlot = getRef(root, 'body-slot');
 
   function getStatusVariant(status) {
@@ -788,13 +790,32 @@ export function renderHousekeepingModule() {
       );
     }
 
-    const activeMeta = M2_TABS.find((t) => t.id === activeTab) || M2_TABS[0];
+    const tabCounts = {
+      estado_habitaciones: state.rooms.length,
+      limpieza: scopedCleaningOrders.filter((c) => c.status !== 'Inspeccionada').length,
+      inspeccion: state.inspections.length,
+      personal: state.staff.length,
+      incidencias: state.incidents.filter((i) => i.status !== 'Resuelta').length,
+      mant_preventivo: state.preventiveSchedules.length,
+      mant_correctivo: scopedWorkOrders.filter((w) => w.status !== 'Completada').length,
+      activos: state.assets.length,
+      insumos: state.hkSupplies.length,
+    };
+
+    const barTabs = visibleTabs.map((t) => ({
+      id: t.id,
+      label: t.label,
+      ...(tabCounts[t.id] !== undefined ? { count: tabCounts[t.id] } : {}),
+    }));
+
     mount(
       headerSlot,
       ModuleHeader({
-        moduleNumber: 'OPERACIONES DE PLANTA',
-        title: `Housekeeping y Mantenimiento · ${activeMeta.label}`,
-        subtitle: activeMeta.subtitle,
+        moduleNumber: canEditCurrentTab
+          ? 'Módulo 02 · Operaciones de Planta'
+          : 'Módulo 02 · Operaciones de Planta · Modo consulta (solo lectura)',
+        title: 'Housekeeping y Mantenimiento',
+        subtitle: 'Control físico de habitaciones sincronizado con Recepción, inspecciones con checklist, incidencias, órdenes de trabajo y reposición con Almacén.',
         actions: canEditCurrentTab && !onlyMine
           ? h('div', { className: 'row-wrap' },
               erpStore.canEditTab('m2', 'incidencias')
@@ -806,6 +827,16 @@ export function renderHousekeepingModule() {
             )
           : null,
       })
+    );
+    mount(
+      tabsSlot,
+      !isTabDenied && barTabs.length > 0
+        ? SubmoduleBar({
+            tabs: barTabs,
+            activeTab,
+            onChange: (nextTab) => navigateToView('/housekeeping', nextTab),
+          })
+        : null
     );
     mount(bodySlot, tabBody);
   }

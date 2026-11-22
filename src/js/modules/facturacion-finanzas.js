@@ -33,6 +33,7 @@ import {
   ModuleHeader,
   StatTile,
   StatusText,
+  SubmoduleBar,
   openModal,
 } from '../components/ui-components.js';
 import { renderAreaComparisonChart, renderGroupedBarChart } from '../components/charts.js';
@@ -53,16 +54,16 @@ const VIEW_HTML = {
 };
 
 const M4_TABS = [
-  { id: 'folios', label: 'Facturación y Finanzas', subtitle: 'Folios integrados en vivo con Reservas y POS, pagos, cuentas por cobrar, control de caja por turno, gastos, costos, reportes e interfaz preparada para SUNAT.' },
-  { id: 'facturacion', label: 'Facturación y Finanzas', subtitle: 'Folios integrados en vivo con Reservas y POS, pagos, cuentas por cobrar, control de caja por turno, gastos, costos, reportes e interfaz preparada para SUNAT.' },
-  { id: 'pagos', label: 'Facturación y Finanzas', subtitle: 'Folios integrados en vivo con Reservas y POS, pagos, cuentas por cobrar, control de caja por turno, gastos, costos, reportes e interfaz preparada para SUNAT.' },
-  { id: 'cxc', label: 'Facturación y Finanzas', subtitle: 'Folios integrados en vivo con Reservas y POS, pagos, cuentas por cobrar, control de caja por turno, gastos, costos, reportes e interfaz preparada para SUNAT.' },
-  { id: 'caja', label: 'Facturación y Finanzas', subtitle: 'Folios integrados en vivo con Reservas y POS, pagos, cuentas por cobrar, control de caja por turno, gastos, costos, reportes e interfaz preparada para SUNAT.' },
-  { id: 'gastos', label: 'Facturación y Finanzas', subtitle: 'Folios integrados en vivo con Reservas y POS, pagos, cuentas por cobrar, control de caja por turno, gastos, costos, reportes e interfaz preparada para SUNAT.' },
-  { id: 'costos', label: 'Facturación y Finanzas', subtitle: 'Folios integrados en vivo con Reservas y POS, pagos, cuentas por cobrar, control de caja por turno, gastos, costos, reportes e interfaz preparada para SUNAT.' },
-  { id: 'reportes', label: 'Facturación y Finanzas', subtitle: 'Folios integrados en vivo con Reservas y POS, pagos, cuentas por cobrar, control de caja por turno, gastos, costos, reportes e interfaz preparada para SUNAT.' },
-  { id: 'sunat', label: 'Facturación y Finanzas', subtitle: 'Folios integrados en vivo con Reservas y POS, pagos, cuentas por cobrar, control de caja por turno, gastos, costos, reportes e interfaz preparada para SUNAT.' },
-  { id: 'ia_financiera', label: 'Facturación y Finanzas', subtitle: 'Folios integrados en vivo con Reservas y POS, pagos, cuentas por cobrar, control de caja por turno, gastos, costos, reportes e interfaz preparada para SUNAT.' },
+  { id: 'folios', label: 'Cuenta del Huésped' },
+  { id: 'facturacion', label: 'Facturación' },
+  { id: 'pagos', label: 'Pagos' },
+  { id: 'cxc', label: 'Cuentas por Cobrar' },
+  { id: 'caja', label: 'Caja' },
+  { id: 'gastos', label: 'Gastos' },
+  { id: 'costos', label: 'Costos' },
+  { id: 'reportes', label: 'Reportes' },
+  { id: 'sunat', label: 'SUNAT' },
+  { id: 'ia_financiera', label: 'IA Financiera' },
 ];
 
 const m4Ui = {
@@ -82,6 +83,7 @@ const m4Ui = {
 export function renderFinanzasModule() {
   const root = parseHtmlTemplate(moduleShellHtml);
   const headerSlot = getRef(root, 'header-slot');
+  const tabsSlot = getRef(root, 'tabs-slot');
   const bodySlot = getRef(root, 'body-slot');
 
   function getStatusVariant(status) {
@@ -794,14 +796,38 @@ export function renderFinanzasModule() {
       );
     }
 
-    const activeMeta = M4_TABS.find((t) => t.id === activeTab) || M4_TABS[0];
+    const tabCounts = {
+      folios: state.folios.length,
+      facturacion: state.invoices.length,
+      cxc: state.receivables.length,
+      gastos: state.expenses.length,
+    };
+
+    const barTabs = visibleTabs.map((t) => ({
+      id: t.id,
+      label: t.label,
+      ...(tabCounts[t.id] !== undefined ? { count: tabCounts[t.id] } : {}),
+    }));
+
     mount(
       headerSlot,
       ModuleHeader({
-        moduleNumber: 'Gestión Económica y Tesorería',
-        title: activeMeta.label,
-        subtitle: activeMeta.subtitle,
+        moduleNumber: canEditCurrentTab
+          ? 'Módulo 04 · Gestión Económica y Tesorería'
+          : 'Módulo 04 · Gestión Económica y Tesorería · Modo consulta (solo lectura)',
+        title: 'Facturación y Finanzas',
+        subtitle: 'Folios integrados en vivo con Reservas y POS, pagos, cuentas por cobrar, control de caja por turno, gastos, costos, reportes e interfaz preparada para SUNAT.',
       })
+    );
+    mount(
+      tabsSlot,
+      !isTabDenied && barTabs.length > 0
+        ? SubmoduleBar({
+            tabs: barTabs,
+            activeTab,
+            onChange: (nextTab) => navigateToView('/finanzas', nextTab),
+          })
+        : null
     );
     mount(bodySlot, tabBody);
   }

@@ -35,6 +35,7 @@ import {
   SearchInput,
   StatTile,
   StatusText,
+  SubmoduleBar,
   openModal,
 } from '../components/ui-components.js';
 
@@ -55,16 +56,16 @@ const VIEW_HTML = {
 };
 
 const M3_TABS = [
-  { id: 'productos', label: 'Catálogo Productos', subtitle: 'Gestión de carta POS, precios de venta, costos unitarios y márgenes.' },
-  { id: 'servicios', label: 'Catálogo Servicios', subtitle: 'Servicios complementarios de Spa, Lavandería, Cochera, Traslados y Bar.' },
-  { id: 'pos', label: 'Punto de Venta (POS)', subtitle: 'Terminal de ventas conectado al inventario y al Folio del huésped.' },
+  { id: 'productos', label: 'Productos', subtitle: 'Gestión de carta POS, precios de venta, costos unitarios y márgenes.' },
+  { id: 'servicios', label: 'Servicios', subtitle: 'Servicios complementarios de Spa, Lavandería, Cochera, Traslados y Bar.' },
+  { id: 'pos', label: 'POS Ventas', subtitle: 'Terminal de ventas conectado al inventario y al Folio del huésped.' },
   { id: 'restaurante', label: 'Restaurante', subtitle: 'Plano de mesas y monitor en tiempo real de comandas y pedidos.' },
   { id: 'room_service', label: 'Room Service', subtitle: 'Registro de pedidos a habitación y seguimiento de entregas.' },
   { id: 'minibar', label: 'Minibar', subtitle: 'Reposición y cargos directos de consumos de minibar.' },
-  { id: 'servicios_comp', label: 'Servicios Compl.', subtitle: 'Registro y tarifario de Spa, Lavandería, Cochera y Traslados.' },
+  { id: 'servicios_comp', label: 'Serv. Complementarios', subtitle: 'Registro y tarifario de Spa, Lavandería, Cochera y Traslados.' },
   { id: 'inventario', label: 'Inventario', subtitle: 'Stock central de almacén, solicitudes internas, vencimientos y Kardex.' },
   { id: 'proveedores', label: 'Proveedores y Compras', subtitle: 'Órdenes de compra, recepción de mercadería y proveedores homologados.' },
-  { id: 'recetas', label: 'Recetario e Insumos', subtitle: 'Estandarización de ingredientes descontados automáticamente al vender en POS.' },
+  { id: 'recetas', label: 'Recetario', subtitle: 'Estandarización de ingredientes descontados automáticamente al vender en POS.' },
   { id: 'ia_demanda', label: 'IA Demanda y Stock', subtitle: 'Recomendaciones de reposición por ocupación y pronóstico de abastecimiento.' },
 ];
 
@@ -83,6 +84,7 @@ const m3Ui = {
 export function renderServiciosPOSModule() {
   const root = parseHtmlTemplate(moduleShellHtml);
   const headerSlot = getRef(root, 'header-slot');
+  const tabsSlot = getRef(root, 'tabs-slot');
   const bodySlot = getRef(root, 'body-slot');
 
   function getStatusVariant(status) {
@@ -1135,14 +1137,42 @@ export function renderServiciosPOSModule() {
       );
     }
 
-    const activeMeta = M3_TABS.find((t) => t.id === activeTab) || M3_TABS[0];
+    const tabCounts = {
+      productos: state.products.length,
+      servicios: state.services.length,
+      restaurante: state.tables.length,
+      room_service: state.posOrders.filter((o) => o.origin === 'Room Service').length,
+      minibar: state.posOrders.filter((o) => o.origin === 'Minibar').length,
+      inventario: lowStockItems.length + pendingReqs.length,
+      proveedores: state.purchaseOrders.length,
+      recetas: state.recipes.length,
+    };
+
+    const barTabs = visibleTabs.map((t) => ({
+      id: t.id,
+      label: t.label,
+      ...(tabCounts[t.id] !== undefined ? { count: tabCounts[t.id] } : {}),
+    }));
+
     mount(
       headerSlot,
       ModuleHeader({
-        moduleNumber: 'INGRESOS COMPLEMENTARIOS Y ABASTECIMIENTO',
-        title: `Servicios, POS, Restaurante y Almacén · ${activeMeta.label}`,
-        subtitle: activeMeta.subtitle,
+        moduleNumber: canEditCurrentTab
+          ? 'Módulo 03 · Ingresos Complementarios y Abastecimiento'
+          : 'Módulo 03 · Ingresos Complementarios y Abastecimiento · Modo consulta (solo lectura)',
+        title: 'Servicios, POS, Restaurante y Almacén',
+        subtitle: 'Punto de venta conectado al folio del huésped (Flujo C), gestión de mesas, room service, minibar, inventario con recetario y compras (Flujo D).',
       })
+    );
+    mount(
+      tabsSlot,
+      !isTabDenied && barTabs.length > 0
+        ? SubmoduleBar({
+            tabs: barTabs,
+            activeTab,
+            onChange: (nextTab) => navigateToView('/servicios', nextTab),
+          })
+        : null
     );
     mount(bodySlot, tabBody);
   }

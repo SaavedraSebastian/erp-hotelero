@@ -21,37 +21,80 @@ export function authHeaders() {
 }
 
 const ALL_APP_TABS = {
-  m1: ['disponibilidad', 'reservas', 'checkin_out', 'huespedes', 'tarifas', 'espera'],
-  m2: ['tablero', 'limpieza', 'inspecciones', 'mantenimiento', 'preventivo', 'activos', 'insumos'],
-  m3: ['pos', 'servicios', 'catalogo', 'inventario', 'proveedores', 'compras'],
-  m4: ['folios', 'comprobantes', 'cxc', 'caja', 'gastos', 'sunat', 'rentabilidad'],
+  m1: ['habitaciones', 'disponibilidad', 'reservas', 'tarifas', 'checkin', 'checkout', 'lista_espera', 'ocupacion', 'huespedes', 'ia_tarifas'],
+  m2: ['estado_habitaciones', 'limpieza', 'inspeccion', 'personal', 'incidencias', 'mant_preventivo', 'mant_correctivo', 'activos', 'insumos', 'ia_operativa'],
+  m3: ['productos', 'servicios', 'pos', 'restaurante', 'room_service', 'minibar', 'servicios_comp', 'inventario', 'proveedores', 'recetas', 'ia_demanda'],
+  m4: ['folios', 'facturacion', 'pagos', 'cxc', 'caja', 'gastos', 'costos', 'reportes', 'sunat', 'ia_financiera'],
   m5: ['perfil_360', 'segmentacion', 'fidelizacion', 'campanas', 'reclamos', 'solicitudes', 'encuestas', 'resenas', 'portal_ia', 'ia_conversacional'],
   config: ['rbac', 'usuarios', 'auditoria'],
 };
 
+const OFFICIAL_ROLE_FALLBACK_MODULES = {
+  RECEPCIONISTA: { view: ['m1', 'm2', 'm4', 'm5'], edit: ['m1', 'm4', 'm5'] },
+  SUPERVISOR_HOUSEKEEPING: { view: ['m2', 'm1', 'm3'], edit: ['m2'] },
+  PERSONAL_LIMPIEZA: { view: ['m2'], edit: ['m2'] },
+  TECNICO_MANTENIMIENTO: { view: ['m2', 'm3'], edit: ['m2'] },
+  ADMIN_SERVICIOS: { view: ['m3', 'm1', 'm4'], edit: ['m3'] },
+  ATENCION_SERVICIOS: { view: ['m3', 'm5'], edit: ['m3'] },
+  SUPERVISOR_SERVICIOS: { view: ['m3', 'm1', 'm4'], edit: ['m3'] },
+  RESTAURANTE: { view: ['m3', 'm1', 'm4'], edit: ['m3'] },
+  COCINA: { view: ['m3'], edit: ['m3'] },
+  RESPONSABLE_ALMACEN: { view: ['m3', 'm2', 'm4'], edit: ['m3'] },
+  RESPONSABLE_COMPRAS: { view: ['m3', 'm4'], edit: ['m3'] },
+  CAJERO: { view: ['m4', 'm1'], edit: ['m4'] },
+  RESPONSABLE_COSTOS: { view: ['m4', 'm3'], edit: ['m4'] },
+  JEFE_FINANZAS: { view: ['m4', 'm1', 'm3'], edit: ['m4'] },
+  GERENTE_FINANCIERO: { view: ['m4', 'm1', 'm3'], edit: ['m4'] },
+  ATENCION_HUESPED: { view: ['m5', 'm1', 'm2', 'm4'], edit: ['m5', 'm2'] },
+  ADMINISTRADOR_COMERCIAL: { view: ['m5', 'm1', 'm4'], edit: ['m5'] },
+};
+
+function isAdminRoleList(upperRoles) {
+  return upperRoles.some((r) => ['ADMIN_SISTEMA', 'SUPER_ADMIN', 'ADMINISTRADOR', 'ADMIN'].includes(r));
+}
+
+function isAuditorRoleList(upperRoles) {
+  return upperRoles.some((r) => ['AUDITOR', 'AUDITOR_GENERAL'].includes(r));
+}
+
 function deriveUiPermissionsFromV1(v1Session) {
-  const permisosSet = new Set(v1Session.permisos || []);
+  const permisosArr = Array.isArray(v1Session.permisos) ? v1Session.permisos.map((p) => String(p).toLowerCase()) : [];
+  const permisosSet = new Set(permisosArr);
   const roles = Array.isArray(v1Session.roles) ? v1Session.roles : [];
-  const isAdmin = roles.includes('ADMIN_SISTEMA');
-  const isAuditor = roles.includes('AUDITOR');
+  const upperRoles = roles.map((r) => String(r).trim().toUpperCase());
+  const isAdmin = isAdminRoleList(upperRoles);
+  const isAuditor = isAuditorRoleList(upperRoles);
 
   const hasPrefixView = (prefix) =>
-    isAdmin || isAuditor || Array.from(permisosSet).some((p) => p.startsWith(prefix) && p.endsWith('.consultar'));
+    isAdmin || isAuditor || permisosArr.some((p) => p.startsWith(prefix));
   const hasPrefixEdit = (prefix) =>
     isAdmin ||
-    Array.from(permisosSet).some((p) => p.startsWith(prefix) && !p.endsWith('.consultar'));
+    (!isAuditor && permisosArr.some((p) => p.startsWith(prefix) && !p.endsWith('.consultar')));
 
   const view = ['dashboard'];
   const edit = [];
 
   for (const mod of ['m1', 'm2', 'm3', 'm4', 'm5']) {
-    if (hasPrefixView(`${mod}.`)) view.push(mod);
-    if (hasPrefixEdit(`${mod}.`)) edit.push(mod);
+    const roleFallbackView = upperRoles.some((r) => OFFICIAL_ROLE_FALLBACK_MODULES[r]?.view.includes(mod));
+    const roleFallbackEdit = upperRoles.some((r) => OFFICIAL_ROLE_FALLBACK_MODULES[r]?.edit.includes(mod));
+    if (hasPrefixView(`${mod}.`) || (permisosArr.length === 0 && roleFallbackView)) {
+      view.push(mod);
+    }
+    if (hasPrefixEdit(`${mod}.`) || (permisosArr.length === 0 && roleFallbackEdit)) {
+      edit.push(mod);
+      if (!view.includes(mod)) view.push(mod);
+    }
   }
-  if (isAdmin || isAuditor || permisosSet.has('auditoria.consultar')) {
+
+  if (
+    isAdmin ||
+    isAuditor ||
+    permisosSet.has('auditoria.consultar') ||
+    permisosSet.has('seguridad.usuario.administrar')
+  ) {
     view.push('config');
   }
-  if (isAdmin) {
+  if (isAdmin || permisosSet.has('seguridad.usuario.administrar')) {
     edit.push('config');
   }
 
@@ -59,12 +102,10 @@ function deriveUiPermissionsFromV1(v1Session) {
   const editableTabs = {};
   for (const mod of ['m1', 'm2', 'm3', 'm4', 'm5', 'config']) {
     if (view.includes(mod)) {
-      allowedTabs[mod] = mod === 'config' && !isAdmin
-        ? ['rbac', 'usuarios', 'auditoria']
-        : ALL_APP_TABS[mod];
+      allowedTabs[mod] = [...ALL_APP_TABS[mod]];
     }
     if (edit.includes(mod)) {
-      editableTabs[mod] = ALL_APP_TABS[mod];
+      editableTabs[mod] = [...ALL_APP_TABS[mod]];
     }
   }
 
@@ -73,18 +114,19 @@ function deriveUiPermissionsFromV1(v1Session) {
     edit,
     allowedTabs,
     editableTabs,
-    canViewFullPII: Boolean(v1Session.usuario?.canViewFullPII),
+    canViewFullPII: isAdmin || Boolean(v1Session.usuario?.canViewFullPII),
     canApproveFinancials: isAdmin || permisosSet.has('m4.gasto.aprobar') || permisosSet.has('m4.alerta.revisar'),
-    canManageRoles: isAdmin,
+    canManageRoles: isAdmin || permisosSet.has('seguridad.usuario.administrar'),
     scopeSummary: `Roles activos: ${roles.join(', ') || 'Sin rol'}`,
   };
 }
 
 function mapV1SessionToErpSession(v1Session, emailFallback = '') {
   const roles = Array.isArray(v1Session.roles) ? v1Session.roles : [];
-  const primaryRole = roles.includes('ADMIN_SISTEMA')
+  const upperRoles = roles.map((r) => String(r).trim().toUpperCase());
+  const primaryRole = isAdminRoleList(upperRoles)
     ? 'admin'
-    : roles.includes('AUDITOR')
+    : isAuditorRoleList(upperRoles)
     ? 'auditor'
     : (roles[0] || 'operador').toLowerCase();
 
@@ -259,11 +301,15 @@ export async function apiLogout() {
   }
 }
 
-export async function apiGetDirectory() {
+export async function apiGetDirectory(authMode = 'legacy_fallback') {
+  const endpoint = authMode === 'supabase' ? '/api/v1/session/directory' : '/api/auth/users';
   try {
-    const res = await fetch('/api/auth/users', {
+    const res = await fetch(endpoint, {
       method: 'GET',
-      headers: { ...authHeaders() },
+      headers: {
+        'X-Requested-With': 'SGH-ERP',
+        ...authHeaders(),
+      },
       credentials: 'include',
     });
     if (!res.ok) return null;

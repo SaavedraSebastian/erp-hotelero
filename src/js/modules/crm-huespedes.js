@@ -34,6 +34,7 @@ import {
   ModuleHeader,
   StatTile,
   StatusText,
+  SubmoduleBar,
   openModal,
 } from '../components/ui-components.js';
 
@@ -53,16 +54,16 @@ const VIEW_HTML = {
 };
 
 const M5_TABS = [
-  { id: 'perfil_360', label: 'CRM y Atención al Huésped', subtitle: 'Perfil 360°, segmentación, fidelización, campañas, reclamos conectados a Mantenimiento, autoatención e IA conversacional.' },
-  { id: 'segmentacion', label: 'CRM y Atención al Huésped', subtitle: 'Perfil 360°, segmentación, fidelización, campañas, reclamos conectados a Mantenimiento, autoatención e IA conversacional.' },
-  { id: 'fidelizacion', label: 'CRM y Atención al Huésped', subtitle: 'Perfil 360°, segmentación, fidelización, campañas, reclamos conectados a Mantenimiento, autoatención e IA conversacional.' },
-  { id: 'campanas', label: 'CRM y Atención al Huésped', subtitle: 'Perfil 360°, segmentación, fidelización, campañas, reclamos conectados a Mantenimiento, autoatención e IA conversacional.' },
-  { id: 'reclamos', label: 'CRM y Atención al Huésped', subtitle: 'Perfil 360°, segmentación, fidelización, campañas, reclamos conectados a Mantenimiento, autoatención e IA conversacional.' },
-  { id: 'solicitudes', label: 'CRM y Atención al Huésped', subtitle: 'Perfil 360°, segmentación, fidelización, campañas, reclamos conectados a Mantenimiento, autoatención e IA conversacional.' },
-  { id: 'encuestas', label: 'CRM y Atención al Huésped', subtitle: 'Perfil 360°, segmentación, fidelización, campañas, reclamos conectados a Mantenimiento, autoatención e IA conversacional.' },
-  { id: 'resenas', label: 'CRM y Atención al Huésped', subtitle: 'Perfil 360°, segmentación, fidelización, campañas, reclamos conectados a Mantenimiento, autoatención e IA conversacional.' },
-  { id: 'portal_ia', label: 'CRM y Atención al Huésped', subtitle: 'Perfil 360°, segmentación, fidelización, campañas, reclamos conectados a Mantenimiento, autoatención e IA conversacional.' },
-  { id: 'ia_conversacional', label: 'CRM y Atención al Huésped', subtitle: 'Perfil 360°, segmentación, fidelización, campañas, reclamos conectados a Mantenimiento, autoatención e IA conversacional.' },
+  { id: 'perfil_360', label: 'Perfil 360°' },
+  { id: 'segmentacion', label: 'Segmentación' },
+  { id: 'fidelizacion', label: 'Fidelización' },
+  { id: 'campanas', label: 'Campañas' },
+  { id: 'reclamos', label: 'Reclamos' },
+  { id: 'solicitudes', label: 'Solicitudes' },
+  { id: 'encuestas', label: 'Encuestas' },
+  { id: 'resenas', label: 'Reseñas' },
+  { id: 'portal_ia', label: 'Autoatención' },
+  { id: 'ia_conversacional', label: 'IA Conversacional' },
 ];
 
 const m5Ui = {
@@ -86,6 +87,7 @@ const m5Ui = {
 export function renderCRMModule() {
   const root = parseHtmlTemplate(moduleShellHtml);
   const headerSlot = getRef(root, 'header-slot');
+  const tabsSlot = getRef(root, 'tabs-slot');
   const bodySlot = getRef(root, 'body-slot');
 
   function getStatusVariant(status) {
@@ -814,14 +816,40 @@ export function renderCRMModule() {
       );
     }
 
-    const activeMeta = M5_TABS.find((t) => t.id === activeTab) || M5_TABS[0];
+    const tabCounts = {
+      perfil_360: state.guests.length,
+      campanas: state.campaigns.length,
+      reclamos: state.complaints.filter((c) => c.status !== 'Resuelto').length,
+      solicitudes: state.guestRequests.filter((r) => r.status !== 'Atendida').length,
+      encuestas: state.surveys.length,
+      resenas: state.reviews.length,
+    };
+
+    const barTabs = visibleTabs.map((t) => ({
+      id: t.id,
+      label: t.label,
+      ...(tabCounts[t.id] !== undefined ? { count: tabCounts[t.id] } : {}),
+    }));
+
     mount(
       headerSlot,
       ModuleHeader({
-        moduleNumber: 'Experiencia, Fidelización y Soporte',
-        title: activeMeta.label,
-        subtitle: activeMeta.subtitle,
+        moduleNumber: canEditCurrentTab
+          ? 'Módulo 05 · Experiencia, Fidelización y Soporte'
+          : 'Módulo 05 · Experiencia, Fidelización y Soporte · Modo consulta (solo lectura)',
+        title: 'CRM y Atención al Huésped',
+        subtitle: 'Perfil 360°, segmentación, fidelización, campañas, reclamos conectados a Mantenimiento, autoatención e IA conversacional.',
       })
+    );
+    mount(
+      tabsSlot,
+      !isTabDenied && barTabs.length > 0
+        ? SubmoduleBar({
+            tabs: barTabs,
+            activeTab,
+            onChange: (nextTab) => navigateToView('/crm', nextTab),
+          })
+        : null
     );
     mount(bodySlot, tabBody);
   }

@@ -65,7 +65,7 @@ export function SubmoduleBar({ tabs, activeTab, onChange }) {
         if (tab.id === activeTab) btn.classList.add('is-active');
         setText(btn, 'label', tab.label);
         if (tab.count !== undefined) {
-          setText(btn, 'count', `(${tab.count})`);
+          setText(btn, 'count', String(tab.count));
           setVisible(btn, 'count', true);
         }
         btn.addEventListener('click', () => onChange(tab.id));

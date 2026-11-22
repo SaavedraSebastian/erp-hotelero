@@ -273,3 +273,103 @@ export async function resolveErpAuthContext(authUserId: string): Promise<AuthCon
     client.release();
   }
 }
+
+export async function listSecurityDirectory(): Promise<
+  Array<{
+    name: string;
+    email: string;
+    role: string;
+    roleLabel: string;
+    department: string;
+    active: boolean;
+  }>
+> {
+  if (!isDatabaseConfigured()) {
+    return [];
+  }
+
+  const layout = await detectSecuritySchemaLayout();
+  const pool = getDatabasePool();
+  const client = await pool.connect();
+
+  try {
+    const rbacColsRes = await client.query<{ table_name: string; column_name: string }>(
+      `SELECT table_name, column_name
+       FROM information_schema.columns
+       WHERE table_schema = 'seguridad'
+         AND table_name IN ('rol', 'usuario_rol', $1)`,
+      [layout.userTable]
+    );
+    const colsByTable = new Map<string, Set<string>>();
+    for (const row of rbacColsRes.rows) {
+      const set = colsByTable.get(row.table_name) ?? new Set<string>();
+      set.add(row.column_name);
+      colsByTable.set(row.table_name, set);
+    }
+
+    const userCols = colsByTable.get(layout.userTable) ?? new Set();
+    const rolCols = colsByTable.get('rol') ?? new Set();
+    const usuarioRolCols = colsByTable.get('usuario_rol') ?? new Set();
+
+    const rolPk = rolCols.has('id_rol') ? 'id_rol' : 'id';
+    const rolCode = rolCols.has('codigo')
+      ? 'codigo'
+      : rolCols.has('codigo_rol')
+      ? 'codigo_rol'
+      : rolCols.has('clave')
+      ? 'clave'
+      : 'nombre';
+    const urUserFk = usuarioRolCols.has(layout.pkColumn)
+      ? layout.pkColumn
+      : usuarioRolCols.has('id_usuario_sistema')
+      ? 'id_usuario_sistema'
+      : usuarioRolCols.has('id_usuario_interno')
+      ? 'id_usuario_interno'
+      : usuarioRolCols.has('id_usuario')
+      ? 'id_usuario'
+      : 'usuario_id';
+    const urRolFk = usuarioRolCols.has('id_rol') ? 'id_rol' : 'rol_id';
+    const emailExpr = userCols.has('email')
+      ? 'u.email::text'
+      : userCols.has('correo')
+      ? 'u.correo::text'
+      : `u.${layout.codeColumn}::text`;
+    const depExpr = layout.depColumn ? `COALESCE(u.${layout.depColumn}, '')::text` : "''::text";
+
+    const rowsRes = await client.query<{
+      codigo_usuario: string;
+      nombre: string;
+      email: string | null;
+      departamento: string;
+      esta_activo: boolean;
+      roles: string[] | null;
+    }>(
+      `SELECT
+         u.${layout.codeColumn}::text AS codigo_usuario,
+         u.${layout.nameColumn}::text AS nombre,
+         ${emailExpr} AS email,
+         ${depExpr} AS departamento,
+         ${layout.activeExprSql} AS esta_activo,
+         ARRAY_REMOVE(ARRAY_AGG(DISTINCT r.${rolCode}::text), NULL) AS roles
+       FROM seguridad.${layout.userTable} u
+       LEFT JOIN seguridad.usuario_rol ur ON ur.${urUserFk} = u.${layout.pkColumn}
+       LEFT JOIN seguridad.rol r ON r.${rolPk} = ur.${urRolFk}
+       GROUP BY u.${layout.pkColumn}, u.${layout.codeColumn}, u.${layout.nameColumn}${userCols.has('email') ? ', u.email' : userCols.has('correo') ? ', u.correo' : ''}${layout.depColumn ? `, u.${layout.depColumn}` : ''}
+       ORDER BY u.${layout.nameColumn} ASC`
+    );
+
+    return rowsRes.rows.map((r) => {
+      const rolesList = Array.isArray(r.roles) ? r.roles.filter(Boolean) : [];
+      return {
+        name: r.nombre,
+        email: r.email && r.email.includes('@') ? r.email : `${r.codigo_usuario}@hotelboulevard.pe`,
+        role: (rolesList[0] ?? 'usuario').toLowerCase(),
+        roleLabel: rolesList.join(' · ') || 'Usuario ERP',
+        department: r.departamento || 'Operaciones',
+        active: Boolean(r.esta_activo),
+      };
+    });
+  } finally {
+    client.release();
+  }
+}

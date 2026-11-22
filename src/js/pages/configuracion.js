@@ -8,11 +8,11 @@ import {
   setText,
   setVisible,
 } from '../utils/dom.js';
-import { getRoute } from '../core/router.js';
+import { getRoute, navigateToView } from '../core/router.js';
 import { erpStore } from '../core/store.js';
 import { ALL_ROLE_IDS, ROLE_LABELS } from '../data/rbac.js';
 import { v1Api } from '../services/api-client.js';
-import { ModuleHeader, StatusText } from '../components/ui-components.js';
+import { ModuleHeader, StatusText, SubmoduleBar } from '../components/ui-components.js';
 import moduloBaseHtml from '../../html/modules/modulo-base.html?raw';
 import rbacHtml from '../../html/pages/configuracion/rbac.html?raw';
 import usuariosHtml from '../../html/pages/configuracion/usuarios.html?raw';
@@ -59,6 +59,7 @@ const AUDIT_MODULE_LABELS = {
 export function renderConfigPage() {
   const root = parseHtmlTemplate(moduloBaseHtml);
   const headerSlot = getRef(root, 'header-slot');
+  const tabsSlot = getRef(root, 'tabs-slot');
   const bodySlot = getRef(root, 'body-slot');
 
   function renderContent() {
@@ -230,6 +231,12 @@ export function renderConfigPage() {
     }
 
     const meta = VIEW_META[activeTab] || VIEW_META.rbac;
+    const configTabs = [
+      { id: 'rbac', label: 'Permisos por Rol' },
+      { id: 'usuarios', label: 'Directorio de Usuarios', count: directoryUsers.length },
+      { id: 'auditoria', label: 'Auditoría' },
+    ].filter((t) => visibleIds.includes(t.id));
+
     mount(
       headerSlot,
       ModuleHeader({
@@ -237,6 +244,16 @@ export function renderConfigPage() {
         title: meta.title,
         subtitle: meta.subtitle,
       })
+    );
+    mount(
+      tabsSlot,
+      configTabs.length > 0
+        ? SubmoduleBar({
+            tabs: configTabs,
+            activeTab,
+            onChange: (nextTab) => navigateToView('/configuracion', nextTab),
+          })
+        : null
     );
     mount(bodySlot, tabNode);
   }

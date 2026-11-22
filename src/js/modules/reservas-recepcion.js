@@ -35,6 +35,7 @@ import {
   SearchInput,
   StatTile,
   StatusText,
+  SubmoduleBar,
   openModal,
 } from '../components/ui-components.js';
 import { renderStackedBarChart } from '../components/charts.js';
@@ -82,6 +83,7 @@ const m1Ui = {
 export function renderReservasModule() {
   const root = parseHtmlTemplate(moduleShellHtml);
   const headerSlot = getRef(root, 'header-slot');
+  const tabsSlot = getRef(root, 'tabs-slot');
   const bodySlot = getRef(root, 'body-slot');
 
   function getStatusVariant(status) {
@@ -1043,13 +1045,30 @@ export function renderReservasModule() {
       );
     }
 
-    const activeMeta = M1_TABS.find((t) => t.id === activeTab) || M1_TABS[0];
+    const tabCounts = {
+      habitaciones: state.rooms.length,
+      reservas: state.reservations.length,
+      tarifas: state.ratePlans.length,
+      checkin: state.reservations.filter((r) => r.status === 'Confirmada').length,
+      checkout: state.reservations.filter((r) => r.status === 'Check-in').length,
+      lista_espera: state.waitlist.filter((w) => w.status === 'Pendiente').length,
+      huespedes: state.guests.length,
+    };
+
+    const barTabs = visibleTabs.map((t) => ({
+      id: t.id,
+      label: t.label,
+      ...(tabCounts[t.id] !== undefined ? { count: tabCounts[t.id] } : {}),
+    }));
+
     mount(
       headerSlot,
       ModuleHeader({
-        moduleNumber: 'OPERACIONES FRONT DESK',
-        title: `Reservas y Recepción · ${activeMeta.label}`,
-        subtitle: activeMeta.subtitle,
+        moduleNumber: canEditCurrentTab
+          ? 'Módulo 01 · Operaciones Front Desk'
+          : 'Módulo 01 · Operaciones Front Desk · Modo consulta (solo lectura)',
+        title: 'Reservas y Recepción',
+        subtitle: 'Gestión de habitaciones, disponibilidad real sincronizada con Housekeeping, reservas, tarifas, check-in/out e IA.',
         actions: canEditCurrentTab
           ? h('div', { className: 'row-wrap' },
               erpStore.canEditTab('m1', 'huespedes')
@@ -1061,6 +1080,16 @@ export function renderReservasModule() {
             )
           : null,
       })
+    );
+    mount(
+      tabsSlot,
+      !isTabDenied && barTabs.length > 0
+        ? SubmoduleBar({
+            tabs: barTabs,
+            activeTab,
+            onChange: (nextTab) => navigateToView('/reservas', nextTab),
+          })
+        : null
     );
     mount(bodySlot, tabBody);
   }
