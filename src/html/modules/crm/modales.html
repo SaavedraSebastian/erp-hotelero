@@ -4,7 +4,7 @@
       <div class="grid-2">
         <div>
           <label class="field-label">Huésped</label>
-          <select class="select-control" data-ref="guest"></select>
+          <div data-ref="guest"></div>
         </div>
         <div>
           <label class="field-label">Habitación</label>
@@ -51,7 +51,7 @@
       <div class="grid-2">
         <div>
           <label class="field-label">Huésped</label>
-          <select class="select-control" data-ref="guest"></select>
+          <div data-ref="guest"></div>
         </div>
         <div>
           <label class="field-label">Habitación</label>
@@ -74,8 +74,6 @@
             <option value="Housekeeping">Housekeeping</option>
             <option value="Recepción">Recepción</option>
             <option value="Mantenimiento">Mantenimiento</option>
-            <option value="Restaurante/POS">Restaurante/POS</option>
-            <option value="Concierge">Concierge</option>
           </select>
         </div>
       </div>
@@ -99,21 +97,13 @@
       <div class="grid-2">
         <div>
           <label class="field-label">Segmento</label>
-          <select class="select-control" data-ref="segment">
-            <option value="Todos">Todos</option>
-            <option value="VIP">VIP</option>
-            <option value="Corporativo">Corporativo</option>
-            <option value="Vacacional">Vacacional</option>
-            <option value="Grupo">Grupo</option>
-            <option value="Larga Estadía">Larga Estadía</option>
-          </select>
+          <select class="select-control" required data-ref="segment"></select>
         </div>
         <div>
           <label class="field-label">Canal</label>
           <select class="select-control" data-ref="channel">
             <option value="Email">Email</option>
-            <option value="WhatsApp">WhatsApp</option>
-            <option value="SMS">SMS</option>
+            <option value="Notificación">Notificación</option>
           </select>
         </div>
       </div>
@@ -132,24 +122,24 @@
     <form class="stack-md">
       <div>
         <label class="field-label">Huésped</label>
-        <select class="select-control" data-ref="guest"></select>
+        <div data-ref="guest"></div>
       </div>
       <div class="grid-2">
         <div>
           <label class="field-label">Calificación Global (1-5)</label>
-          <input type="number" min="1" max="5" class="input-control font-mono" data-ref="overall" />
+          <input type="number" min="1" max="5" required class="input-control font-mono" data-ref="overall" />
         </div>
         <div>
           <label class="field-label">Limpieza (1-5)</label>
-          <input type="number" min="1" max="5" class="input-control font-mono" data-ref="cleanliness" />
+          <input type="number" min="1" max="5" required class="input-control font-mono" data-ref="cleanliness" />
         </div>
         <div>
           <label class="field-label">Servicio (1-5)</label>
-          <input type="number" min="1" max="5" class="input-control font-mono" data-ref="service" />
+          <input type="number" min="1" max="5" required class="input-control font-mono" data-ref="service" />
         </div>
         <div>
           <label class="field-label">NPS (0-10)</label>
-          <input type="number" min="0" max="10" class="input-control font-mono" data-ref="nps" />
+          <input type="number" min="0" max="10" required class="input-control font-mono" data-ref="nps" />
         </div>
       </div>
       <div>

@@ -739,6 +739,9 @@ export function applyPerfiles(guests, perfiles = []) {
   return { guests: [...guests, ...extra], perfilToHuesped };
 }
 
+/** Mapeos reutilizables por los listados paginados de CRM. */
+export const mapCRMProfiles = (rows = []) => applyPerfiles([], rows).guests;
+
 export function mapM5(
   { campanas = [], reclamos = [], opiniones = [], solicitudes = [], segmentos = [] },
   perfilToHuesped = new Map()
@@ -834,6 +837,12 @@ export function mapM5(
 
   return { campaigns, complaints, guestRequests, surveys, reviews, segments };
 }
+
+export const mapCampaignRows = (rows = []) => mapM5({ campanas: rows }).campaigns;
+export const mapComplaintRows = (rows = []) => mapM5({ reclamos: rows }).complaints;
+export const mapGuestRequestRows = (rows = []) => mapM5({ solicitudes: rows }).guestRequests;
+export const mapSurveyRows = (rows = []) => mapM5({ opiniones: rows }).surveys;
+export const mapReviewRows = (rows = []) => mapM5({ opiniones: rows }).reviews;
 
 // ---------------------------------------------------------------------------------------------
 // Transversales: notificaciones y auditoría

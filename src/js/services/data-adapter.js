@@ -92,7 +92,7 @@ export function getPersistenceStatus(lastSyncedAt, loadInfo) {
       connected: true,
       label: 'PostgreSQL (Supabase) · conectado',
       description:
-        'Los cinco módulos se leen de la base de datos.' +
+        'Los datos de la vista actual se leen bajo demanda desde la base de datos.' +
         (forbidden.length ? ` Tu rol no tiene acceso a: ${forbidden.join(', ')}.` : '') +
         ' Sin lectura todavía: kardex de movimientos de inventario.',
     };
@@ -433,11 +433,13 @@ function buildResourceList() {
     ['gastos', 'gastos pendientes', paged('/m4/gastos?status=PENDIENTE', 1)],
     ['cxc', 'cuentas por cobrar abiertas', paged('/m4/cuentas-por-cobrar?status=VIGENTE,VENCIDA')],
     // M5
-    ['perfiles', 'perfiles de huésped', paged('/m5/perfiles')],
-    ['campanas', 'campañas', paged('/m5/campanas')],
-    ['reclamos', 'reclamos', paged('/m5/reclamos')],
-    ['opiniones', 'encuestas y reseñas', paged('/m5/opiniones')],
-    ['solicitudes', 'solicitudes de huésped', paged('/m5/solicitudes')],
+    // CRM conserva solo una página para contexto operativo. Los mantenedores recorren
+    // el total directamente desde el servidor mediante sus propios paginadores.
+    ['perfiles', 'perfiles recientes', paged('/m5/perfiles', 1)],
+    ['campanas', 'campañas recientes', paged('/m5/campanas', 1)],
+    ['reclamos', 'reclamos recientes', paged('/m5/reclamos', 1)],
+    ['opiniones', 'opiniones recientes', paged('/m5/opiniones', 1)],
+    ['solicitudes', 'solicitudes recientes', paged('/m5/solicitudes', 1)],
     ['segmentos', 'segmentos CRM', async () => {
       const res = await apiV1Request('/m5/segmentos');
       const rows = res?.items ?? res?.data;
@@ -502,16 +504,16 @@ export async function loadERPState(options = {}) {
     return { state, source: 'unauthenticated', errors: [], truncated: [], forbidden: [] };
   }
 
-  // Carga completa (sin `keys`) o parcial: solo se vuelven a pedir los recursos indicados y el resto
-  // se toma de la caché de la última carga. El estado se recalcula siempre completo (mapeo puro).
+  // Solo se piden los recursos indicados; el resto se toma de la caché de rutas ya visitadas.
+  // Sin claves explícitas se carga únicamente el resumen, nunca todo el ERP.
   const all = buildResourceList();
-  const only = options.keys ? new Set(options.keys) : null;
-  if (!only) {
+  const only = options.keys ? new Set(options.keys) : new Set(['resumen']);
+  if (options.reset) {
     rawCache.clear();
     folioDetailsCache = new Map();
     movementsCache = new Map();
   }
-  const resources = only ? all.filter(([key]) => only.has(key)) : all;
+  const resources = all.filter(([key]) => only.has(key));
   const settled = await Promise.allSettled(resources.map(([, , load]) => load()));
 
   const errors = [];
@@ -631,6 +633,7 @@ export async function loadERPState(options = {}) {
   state.folios = mapFolios(cuentas, folioDetailsCache);
 
   // ---- Transversales
+  state.dashboardSummary = obj('resumen')?.kpis ?? null;
   state.financeSummary = mapFinanceSummary(obj('reportes'));
   state.notifications = mapNotifications(obj('resumen'));
   state.auditLog = mapAuditLog(list('bitacoras'));

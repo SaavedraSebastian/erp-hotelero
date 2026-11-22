@@ -730,7 +730,7 @@ export function renderServiciosPOSModule() {
       bindPagedContainer({
         container: getRef(tabBody, 'orders-list'),
         key: 'm3.comandas',
-        list: getPagedList('m3.comandas', { path: '/m3/comandas', map: mapComandaRows, pageSize: 20 }),
+        list: getPagedList('m3.comandas', { path: '/m3/comandas', map: mapComandaRows, pageSize: 10 }),
         filters: {
           searchPlaceholder: 'Buscar comanda, mesa, habitación o huésped…',
           dates: true,
@@ -800,7 +800,7 @@ export function renderServiciosPOSModule() {
       bindPagedContainer({
         container: getRef(tabBody, 'orders-list'),
         key: 'm3.roomservice',
-        list: getPagedList('m3.roomservice', { path: '/m3/comandas?modalidad=' + encodeURIComponent('habitación'), map: mapComandaRows, pageSize: 20 }),
+        list: getPagedList('m3.roomservice', { path: '/m3/comandas?modalidad=' + encodeURIComponent('habitación'), map: mapComandaRows, pageSize: 10 }),
         filters: {
           searchPlaceholder: 'Buscar pedido, habitación o huésped…',
           dates: true,
@@ -862,7 +862,7 @@ export function renderServiciosPOSModule() {
       bindPagedContainer({
         container: getRef(tabBody, 'orders-list'),
         key: 'm3.minibar',
-        list: getPagedList('m3.minibar', { path: '/m3/consumos?puntoVenta=PV-MINI', map: mapConsumoRows, pageSize: 20 }),
+        list: getPagedList('m3.minibar', { path: '/m3/consumos?puntoVenta=PV-MINI', map: mapConsumoRows, pageSize: 10 }),
         filters: {
           searchPlaceholder: 'Buscar consumo, habitación o huésped…',
           dates: true,
@@ -1084,7 +1084,7 @@ export function renderServiciosPOSModule() {
       bindPagedContainer({
         container: getRef(tabBody, 'po-tbody'),
         key: 'm3.oc',
-        list: getPagedList('m3.oc', { path: '/m3/ordenes-compra', map: mapPurchaseOrderRows, pageSize: 20 }),
+        list: getPagedList('m3.oc', { path: '/m3/ordenes-compra', map: mapPurchaseOrderRows, pageSize: 10 }),
         filters: {
           searchPlaceholder: 'Buscar orden o proveedor…',
           dates: true,

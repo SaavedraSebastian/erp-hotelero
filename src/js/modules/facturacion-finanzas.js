@@ -414,7 +414,7 @@ export function renderFinanzasModule() {
       bindPagedContainer({
         container: getRef(tabBody, 'tbody'),
         key: 'm4.comprobantes',
-        list: getPagedList('m4.comprobantes', { path: '/m4/comprobantes', map: mapInvoiceRows, pageSize: 20 }),
+        list: getPagedList('m4.comprobantes', { path: '/m4/comprobantes', map: mapInvoiceRows, pageSize: 10 }),
         filters: {
           searchPlaceholder: 'Buscar serie-número, cliente o documento…',
           dates: true,
@@ -530,7 +530,7 @@ export function renderFinanzasModule() {
       bindPagedContainer({
         container: getRef(tabBody, 'tbody'),
         key: 'm4.cxc',
-        list: getPagedList('m4.cxc', { path: '/m4/cuentas-por-cobrar', map: mapReceivableRows, pageSize: 20 }),
+        list: getPagedList('m4.cxc', { path: '/m4/cuentas-por-cobrar', map: mapReceivableRows, pageSize: 10 }),
         filters: {
           searchPlaceholder: 'Buscar cliente o documento…',
           statusOptions: [
@@ -651,7 +651,7 @@ export function renderFinanzasModule() {
       bindPagedContainer({
         container: getRef(tabBody, 'tbody'),
         key: 'm4.gastos',
-        list: getPagedList('m4.gastos', { path: '/m4/gastos', map: mapExpenseRows, pageSize: 20 }),
+        list: getPagedList('m4.gastos', { path: '/m4/gastos', map: mapExpenseRows, pageSize: 10 }),
         filters: {
           searchPlaceholder: 'Buscar concepto, proveedor o centro de costo…',
           dates: true,

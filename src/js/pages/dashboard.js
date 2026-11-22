@@ -47,32 +47,29 @@ export function renderDashboardPage() {
     const rangeDays = dashUi.dateRange === 'hoy' ? 1 : dashUi.dateRange === '7d' ? 7 : 30;
     const rangeFrom = addDays(TODAY, -(rangeDays - 1));
 
-    const totalRooms = state.rooms.length;
-    const occupiedRooms = state.rooms.filter((r) => r.commercialStatus === 'Ocupada').length;
-    const freeReadyRooms = state.rooms.filter(
-      (r) => r.commercialStatus === 'Disponible' && ['Inspeccionada', 'Limpia'].includes(r.housekeepingStatus)
-    ).length;
-    const reservedTodayRooms = state.rooms.filter((r) => r.commercialStatus === 'Reservada').length;
-    const cleaningOrBlockedRooms = state.rooms.filter((r) =>
-      ['Sucia', 'En limpieza', 'Fuera de servicio'].includes(r.housekeepingStatus)
-    ).length;
+    const operational = state.dashboardSummary ?? {};
+    const totalRooms = Number(operational.total_habitaciones ?? 0);
+    const occupiedRooms = Number(operational.habitaciones_ocupadas ?? 0);
+    const dirtyRooms = Number(operational.habitaciones_sucias ?? 0);
+    const outOfServiceRooms = Number(operational.habitaciones_fuera_servicio ?? 0);
+    const freeReadyRooms = Number(operational.habitaciones_disponibles_listas ?? 0);
+    const reservedTodayRooms = Number(operational.habitaciones_reservadas_hoy ?? 0);
+    const cleaningOrBlockedRooms = dirtyRooms + outOfServiceRooms;
     const occupancyPct = Math.round((occupiedRooms / Math.max(1, totalRooms)) * 100);
 
-    const arrToday = state.reservations.filter((r) => r.checkInDate === TODAY && r.status === 'Confirmada').length;
-    const depToday = state.reservations.filter((r) => r.checkOutDate === TODAY && r.status === 'Check-in').length;
-    const dirtyOrCleaning = state.rooms.filter(
-      (r) => r.housekeepingStatus === 'Sucia' || r.housekeepingStatus === 'En limpieza'
-    ).length;
+    const arrToday = Number(operational.llegadas_hoy ?? 0);
+    const depToday = Number(operational.salidas_hoy ?? 0);
+    const dirtyOrCleaning = Number(operational.ordenes_limpieza_pendientes ?? dirtyRooms);
 
     const onlyMine = Boolean(currentPermissions?.onlyAssignedTasks);
     const visibleCleaningOrders = onlyMine
       ? state.cleaningOrders.filter((c) => c.assignedStaffId === currentUser.assignedStaffId)
       : state.cleaningOrders;
-    const openIncidents = state.incidents.filter((i) => i.status !== 'Resuelta').length;
-    const openWOs = state.workOrders.filter((w) => w.status !== 'Completada').length;
+    const openIncidents = Number(operational.incidencias_abiertas ?? 0);
+    const openWOs = Number(operational.ordenes_trabajo_abiertas ?? 0);
 
-    const criticalStock = state.inventory.filter((i) => i.stock <= i.minStock * 0.85).length;
-    const pendingReqs = state.supplyRequisitions.filter((r) => r.status === 'Solicitada').length;
+    const criticalStock = Number(operational.inventario_critico ?? 0);
+    const pendingReqs = Number(operational.requisiciones_pendientes ?? 0);
 
     // Cifras financieras del rango elegido, calculadas por el servidor.
     const sumKey = `${rangeFrom}|${TODAY}`;
@@ -94,15 +91,10 @@ export function renderDashboardPage() {
     const openReceivables = (summary?.receivable ?? 0) + state.folios.reduce((sum, f) => sum + f.balance, 0);
     const totalExpenses = summary?.expenses ?? 0;
     const posTotal = summary?.servicesSales ?? 0;
-    const pendingPayablesCount =
-      state.expenses.filter((e) => e.status === 'Pendiente').length +
-      state.purchaseOrders.filter((p) => !['Recibida', 'Rechazada', 'Cancelada'].includes(p.status)).length;
+    const pendingPayablesCount = Number(operational.alertas_financieras_pendientes ?? 0);
 
-    const openComplaints = state.complaints.filter((c) => c.status !== 'Resuelto').length;
-    const avgSatisfaction =
-      state.surveys.length > 0
-        ? (state.surveys.reduce((s, r) => s + r.overallScore, 0) / state.surveys.length).toFixed(2)
-        : '—';
+    const openComplaints = Number(operational.reclamos_abiertos ?? 0);
+    const avgSatisfaction = operational.satisfaccion_promedio ?? '—';
 
     // Ingresos = consumos por área; costos = gastos aprobados por centro de costo, dentro del rango elegido.
     const revenueExpenseData = (summary?.areas ?? []).slice(0, 6).map((a) => ({ name: a.name, ingresos: a.ingresos, costos: a.costos }));
@@ -130,7 +122,7 @@ export function renderDashboardPage() {
       kpis.push(
         StatTile({
           label: 'Reservas y movimientos hoy',
-          value: String(state.reservations.length),
+          value: String(arrToday + depToday),
           meta: `Check-ins hoy: ${arrToday} · Check-outs: ${depToday}`,
           onClick: () => navigate('/reservas/reservas'),
         }),
@@ -259,7 +251,7 @@ export function renderDashboardPage() {
         card,
         'subtitle',
         activeShift
-          ? `Saldo esperado en caja: ${formatCurrency(activeShift.expectedBalance)} · ${state.folios.filter((f) => f.balance > 0).length} folios con saldo pendiente.`
+          ? `Saldo esperado en caja: ${formatCurrency(activeShift.expectedBalance)} · ${Number(operational.cuentas_activas ?? 0)} folios activos.`
           : 'Abre tu turno de caja en Finanzas para comenzar a recibir cobros.'
       );
       getRef(card, 'pay-btn')?.addEventListener('click', () => navigate('/finanzas/pagos'));
@@ -281,7 +273,7 @@ export function renderDashboardPage() {
         iconName: 'calendar',
         kicker: 'Front Desk',
         title: 'Reservas y Recepción',
-        desc: `${state.reservations.length} reservas · ${occupancyPct}% ocup.`,
+        desc: `${arrToday + depToday} movimientos hoy · ${occupancyPct}% ocup.`,
       },
       {
         mod: 'm2',
@@ -395,14 +387,6 @@ export function renderDashboardPage() {
         headline: `Seguimiento a ${openComplaints} reclamo(s) abierto(s)`,
         detail: 'Atender incidencias vinculadas en menos de 2 horas protege el puntaje NPS de clientes VIP.',
         to: '/crm/reclamos',
-      });
-    }
-    if (canM1) {
-      aiAlerts.push({
-        mod: 'Tarifas IA',
-        headline: 'Ajuste dinámico sugerido +8% en Deluxe Vista Mar',
-        detail: 'Demanda de fin de semana con lista de espera activa y solo 1 unidad libre de esa categoría.',
-        to: '/reservas/ia-tarifas',
       });
     }
     if (canM2 && openIncidents > 0) {

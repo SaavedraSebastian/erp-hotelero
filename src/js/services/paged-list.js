@@ -10,7 +10,7 @@ export const PAGE_SIZES = [10, 20, 50, 100];
  *  - `map(rows, response)`: convierte las filas crudas de la API al modelo de la interfaz.
  *  - `filters`: filtros iniciales; los valores vacíos no se envían.
  */
-export function createPagedList({ path, map = (rows) => rows, pageSize = 20, filters = {} }) {
+export function createPagedList({ path, map = (rows) => rows, pageSize = 10, filters = {} }) {
   const st = {
     rows: [],
     total: 0,

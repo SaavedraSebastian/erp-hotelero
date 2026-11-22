@@ -444,7 +444,7 @@ export function renderHousekeepingModule() {
         mountRef(tabBody, 'table-wrap', scopedCleaningOrders.length ? renderCleaningTable(lp.slice) : EmptyState({ iconName: 'sparkles', title: 'Sin tareas asignadas', description: 'No tienes órdenes de limpieza abiertas.' }));
         mountRef(tabBody, 'footer-slot', lp.footer);
       } else {
-        const cleanList = getPagedList('m2.limpieza', { path: '/m2/ordenes-limpieza', map: mapCleaningRows, pageSize: 20 });
+        const cleanList = getPagedList('m2.limpieza', { path: '/m2/ordenes-limpieza', map: mapCleaningRows, pageSize: 10 });
         bindPagedView({
           key: 'm2.limpieza',
           list: cleanList,
@@ -623,7 +623,7 @@ export function renderHousekeepingModule() {
         );
         return tbl;
       };
-      const incList = getPagedList('m2.incidencias', { path: '/m2/incidencias', map: mapIncidentRows, pageSize: 20 });
+      const incList = getPagedList('m2.incidencias', { path: '/m2/incidencias', map: mapIncidentRows, pageSize: 10 });
       bindPagedView({
         key: 'm2.incidencias',
         list: incList,
@@ -704,7 +704,7 @@ export function renderHousekeepingModule() {
         mountRef(tabBody, 'grid-wrap', scopedWorkOrders.length ? renderWorkOrderCards(lp.slice) : EmptyState({ iconName: 'wrench', title: 'Sin órdenes asignadas', description: 'No tienes órdenes de trabajo abiertas.' }));
         mountRef(tabBody, 'footer-slot', lp.footer);
       } else {
-        const otList = getPagedList('m2.ot', { path: '/m2/ordenes-trabajo', map: mapWorkOrderRows, pageSize: 20 });
+        const otList = getPagedList('m2.ot', { path: '/m2/ordenes-trabajo', map: mapWorkOrderRows, pageSize: 10 });
         bindPagedView({
           key: 'm2.ot',
           list: otList,

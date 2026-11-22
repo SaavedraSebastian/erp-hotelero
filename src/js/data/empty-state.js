@@ -22,6 +22,7 @@ export function createEmptyERPState() {
     reservations: [],
     ratePlans: [],
     waitlist: [],
+    dashboardSummary: null,
     financeSummary: null,
     dynamicPricing: { horizonDays: 7, rule: [], types: [] },
 

@@ -28,6 +28,17 @@ import { erpStore } from '../core/store.js';
 import { maskDocument, maskEmail, maskPhone } from '../data/rbac.js';
 import { sendCRMChatMessage } from '../services/ai-client.js';
 import { apiV1Request } from '../services/api-client.js';
+import { bindPagedContainer } from '../components/paged-view.js';
+import { GuestPicker } from '../components/guest-picker.js';
+import { getPagedList } from '../services/paged-list.js';
+import {
+  mapCRMProfiles,
+  mapCampaignRows,
+  mapComplaintRows,
+  mapGuestRequestRows,
+  mapReviewRows,
+  mapSurveyRows,
+} from '../services/erp-mappers.js';
 import {
   AccessDeniedCard,
   EmptyState,
@@ -69,9 +80,10 @@ const M5_TABS = [
 const m5Ui = {
   rewards: null, // null = aún sin leer; [] = leído sin beneficios
   rewardsLoading: false,
+  profileDetails: new Map(),
+  profileDetailsLoading: new Set(),
   selectedGuestId: '',
   selectedLoyaltyGuestId: '',
-  segmentFilter: 'Todos',
   reviewReplyDraft: {},
   portalGuestId: '',
   portalReqType: 'Amenity / Almohadas',
@@ -102,6 +114,24 @@ export function renderCRMModule() {
     return String(text || '').replace(/^Flujo [A-F]:\s*/i, '');
   }
 
+  function roomForGuest(state, guestId) {
+    const folio = state.folios.find((item) => item.guestId === guestId && item.status === 'Abierto');
+    if (folio?.roomNumber) return folio.roomNumber;
+    return state.reservations.find((item) => item.guestId === guestId && item.roomNumber)?.roomNumber || '';
+  }
+
+  function mountCRMGuestPicker(slot, state, roomInput) {
+    const picker = GuestPicker({
+      source: 'perfiles',
+      onSelect: (guest) => {
+        erpStore.ensureGuest(guest);
+        if (roomInput) roomInput.value = roomForGuest(state, guest.id);
+      },
+    });
+    mount(slot, picker);
+    return picker;
+  }
+
   function openComplaintModal() {
     const state = erpStore.state;
     openModal({
@@ -109,24 +139,21 @@ export function renderCRMModule() {
       subtitle: 'Si afecta infraestructura o activas escalamiento, crea automáticamente una Incidencia en Mantenimiento.',
       renderBody: (close) => {
         const form = cloneModal('modal-reclamo');
-        const guestSel = getRef(form, 'guest');
+        const guestSlot = getRef(form, 'guest');
         const roomIn = getRef(form, 'room');
         const catSel = getRef(form, 'category');
         const sevSel = getRef(form, 'severity');
         const descIn = getRef(form, 'description');
         const escChk = getRef(form, 'escalate');
 
-        mount(guestSel, state.guests.map((g) => h('option', { value: g.id }, g.fullName)));
-        roomIn.value = '203';
-        sevSel.value = 'Alta';
-        escChk.checked = true;
+        const guestPicker = mountCRMGuestPicker(guestSlot, state, roomIn);
 
         getRef(form, 'cancel-btn')?.addEventListener('click', close);
         form.addEventListener('submit', (e) => {
           e.preventDefault();
-          if (!descIn.value.trim()) return;
+          if (!guestPicker.getValue() || !descIn.value.trim()) return;
           erpStore.createComplaint({
-            guestId: guestSel.value,
+            guestId: guestPicker.getValue(),
             roomNumber: roomIn.value.trim(),
             category: catSel.value,
             severity: sevSel.value,
@@ -144,24 +171,23 @@ export function renderCRMModule() {
     const state = erpStore.state;
     openModal({
       title: 'Nueva Solicitud de Huésped',
-      subtitle: 'Deriva automáticamente la atención al área correspondiente (Recepción, Housekeeping, Mantenimiento o Restaurante).',
+      subtitle: 'Deriva automáticamente la atención a Recepción, Housekeeping o Mantenimiento.',
       renderBody: (close) => {
         const form = cloneModal('modal-solicitud');
-        const guestSel = getRef(form, 'guest');
+        const guestSlot = getRef(form, 'guest');
         const roomIn = getRef(form, 'room');
         const typeSel = getRef(form, 'type');
         const areaSel = getRef(form, 'target-area');
         const descIn = getRef(form, 'description');
 
-        mount(guestSel, state.guests.map((g) => h('option', { value: g.id }, g.fullName)));
-        roomIn.value = '201';
+        const guestPicker = mountCRMGuestPicker(guestSlot, state, roomIn);
 
         getRef(form, 'cancel-btn')?.addEventListener('click', close);
         form.addEventListener('submit', (e) => {
           e.preventDefault();
-          if (!descIn.value.trim()) return;
+          if (!guestPicker.getValue() || !descIn.value.trim()) return;
           erpStore.createGuestRequest({
-            guestId: guestSel.value,
+            guestId: guestPicker.getValue(),
             roomNumber: roomIn.value.trim(),
             type: typeSel.value,
             targetArea: areaSel.value,
@@ -176,6 +202,7 @@ export function renderCRMModule() {
   }
 
   function openCampaignModal() {
+    const state = erpStore.state;
     openModal({
       title: 'Nueva Campaña de Marketing (Opt-In)',
       subtitle: 'Solo se enviará a huéspedes con consentimiento comercial vigente.',
@@ -186,7 +213,7 @@ export function renderCRMModule() {
         const chSel = getRef(form, 'channel');
         const subIn = getRef(form, 'subject');
 
-        segSel.value = 'VIP';
+        mount(segSel, (state?.segments ?? []).map((segment) => h('option', { value: segment.name }, segment.name)));
 
         getRef(form, 'cancel-btn')?.addEventListener('click', close);
         form.addEventListener('submit', (e) => {
@@ -213,28 +240,25 @@ export function renderCRMModule() {
       title: 'Registrar Encuesta de Satisfacción',
       renderBody: (close) => {
         const form = cloneModal('modal-encuesta');
-        const guestSel = getRef(form, 'guest');
+        const guestSlot = getRef(form, 'guest');
         const overallIn = getRef(form, 'overall');
         const cleanIn = getRef(form, 'cleanliness');
         const srvIn = getRef(form, 'service');
         const npsIn = getRef(form, 'nps');
         const comIn = getRef(form, 'comment');
 
-        mount(guestSel, state.guests.map((g) => h('option', { value: g.id }, g.fullName)));
-        overallIn.value = '5';
-        cleanIn.value = '5';
-        srvIn.value = '5';
-        npsIn.value = '9';
+        const guestPicker = mountCRMGuestPicker(guestSlot, state);
 
         getRef(form, 'cancel-btn')?.addEventListener('click', close);
         form.addEventListener('submit', (e) => {
           e.preventDefault();
-          const g = state.guests.find((x) => x.id === guestSel.value);
+          if (!guestPicker.getValue()) return;
+          const g = guestPicker.getSelected();
           const clean = Number(cleanIn.value);
           const srv = Number(srvIn.value);
           const npsVal = Number(npsIn.value);
           erpStore.addSurveyResponse({
-            guestId: guestSel.value,
+            guestId: guestPicker.getValue(),
             guestName: g?.fullName || '',
             overallScore: Number(overallIn.value),
             cleanliness: clean,
@@ -273,7 +297,6 @@ export function renderCRMModule() {
     if (!m5Ui.selectedLoyaltyGuestId && state.guests.length > 0) m5Ui.selectedLoyaltyGuestId = state.guests[0].id;
     if (!m5Ui.portalGuestId && state.guests.length > 0) m5Ui.portalGuestId = state.guests[0].id;
     const selectedGuest = state.guests.find((g) => g.id === m5Ui.selectedGuestId) || state.guests[0];
-    const selectedLoyaltyGuest = state.guests.find((g) => g.id === m5Ui.selectedLoyaltyGuestId) || state.guests[0];
 
     let tabBody = null;
 
@@ -287,12 +310,85 @@ export function renderCRMModule() {
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.perfil_360);
       tabBody = view;
 
-      mountRef(
-        tabBody,
-        'guests-list',
-        state.guests.map((g) => {
+      const renderProfileDetail = (guest) => {
+        if (!guest) {
+          mountRef(tabBody, 'detail-slot', EmptyState({ iconName: 'users', title: 'Selecciona un huésped', description: 'Elige un perfil del listado izquierdo.' }));
+          return;
+        }
+        const cached = m5Ui.profileDetails.get(guest.profileId);
+        const detailGuest = cached?.guest || guest;
+        const detail = clone('detalle-huesped-360');
+        setText(detail, 'segment-tier', detailGuest.segment);
+        setText(detail, 'full-name', detailGuest.fullName);
+        setText(detail, 'contact-pii', `${detailGuest.documentType} ${maskDocument(detailGuest.documentNumber, canViewFullPII)} · ${maskEmail(detailGuest.email, canViewFullPII)} · ${maskPhone(detailGuest.phone, canViewFullPII)}`);
+        mountRef(detail, 'consent-status', StatusText({
+          label: detailGuest.privacyConsentISO27701 ? 'Privacidad consentida' : 'Sin consentimiento',
+          variant: detailGuest.privacyConsentISO27701 ? 'success' : 'warning',
+        }));
+        mountRef(
+          detail,
+          'kpis',
+          StatTile({ label: 'Puntos de fidelización', value: detailGuest.loyaltyPoints.toLocaleString('es-PE'), tone: 'teal' }),
+          StatTile({ label: 'Estadías acumuladas', value: detailGuest.totalStays }),
+          StatTile({ label: 'Gasto histórico', value: formatCurrency(detailGuest.totalSpent) })
+        );
+        const preferences = cached?.preferences ?? [];
+        setText(detail, 'preferences', preferences.length > 0 ? preferences.join(' · ') : (cached ? 'Sin preferencias registradas' : 'Cargando preferencias…'));
+        setVisible(detail, 'notes', Boolean(detailGuest.notes));
+        if (detailGuest.notes) setText(detail, 'notes', `Nota: ${detailGuest.notes}`);
+        const reservations = cached?.reservations ?? [];
+        setText(detail, 'res-title', cached ? `Reservas recientes (${reservations.length})` : 'Reservas recientes');
+        mountRef(detail, 'res-folio-list', cached
+          ? (reservations.length > 0 ? reservations.map((reservation) => {
+              const row = clone('item-huesped-reserva');
+              setText(row, 'label', `${reservation.codigo_reserva} (${reservation.estado_reserva})`);
+              setText(row, 'amount', formatCurrency(Number(reservation.total_reserva) || 0));
+              return row;
+            }) : h('div', { className: 'text-xs text-slate-400' }, 'Sin reservas asociadas.'))
+          : h('div', { className: 'text-xs text-slate-400' }, 'Cargando…'));
+        const complaints = cached?.complaints ?? [];
+        setText(detail, 'comp-title', cached ? `Reclamos recientes (${complaints.length})` : 'Reclamos recientes');
+        mountRef(detail, 'comp-list', cached
+          ? (complaints.length > 0 ? complaints.map((complaint) => {
+              const row = clone('item-huesped-reclamo');
+              setText(row, 'code', complaint.codigo_seguimiento || String(complaint.id_reclamo));
+              mountRef(row, 'status', StatusText({ label: complaint.estado, variant: getStatusVariant(complaint.estado) }));
+              setText(row, 'desc', complaint.descripcion || 'Sin descripción');
+              return row;
+            }) : h('div', { className: 'text-xs text-slate-400' }, 'Sin reclamos registrados.'))
+          : h('div', { className: 'text-xs text-slate-400' }, 'Cargando…'));
+        mountRef(tabBody, 'detail-slot', detail);
+
+        if (!cached && !m5Ui.profileDetailsLoading.has(guest.profileId)) {
+          m5Ui.profileDetailsLoading.add(guest.profileId);
+          apiV1Request(`/m5/perfiles/${encodeURIComponent(guest.profileId)}`)
+            .then((response) => {
+              const data = response?.data;
+              const mappedGuest = data?.perfil ? mapCRMProfiles([data.perfil])[0] : guest;
+              m5Ui.profileDetails.set(guest.profileId, {
+                guest: mappedGuest,
+                preferences: (data?.preferencias ?? []).filter((item) => item.vigente).map((item) => item.descripcion),
+                reservations: data?.reservas ?? [],
+                complaints: data?.reclamos ?? [],
+              });
+              if (m5Ui.selectedGuestId === guest.id) renderProfileDetail(mappedGuest);
+            })
+            .catch(() => {
+              m5Ui.profileDetails.set(guest.profileId, { guest, preferences: [], reservations: [], complaints: [] });
+              if (m5Ui.selectedGuestId === guest.id) renderProfileDetail(guest);
+            })
+            .finally(() => m5Ui.profileDetailsLoading.delete(guest.profileId));
+        }
+      };
+
+      const renderProfileRows = (rows) => {
+        const selected = rows.find((guest) => guest.id === m5Ui.selectedGuestId) || rows[0];
+        if (selected && selected.id !== m5Ui.selectedGuestId) m5Ui.selectedGuestId = selected.id;
+        renderProfileDetail(selected);
+        const fragment = document.createDocumentFragment();
+        rows.forEach((g) => {
           const btn = clone('item-huesped-lista');
-          if (selectedGuest?.id === g.id) {
+          if (selected?.id === g.id) {
             btn.style.borderColor = 'var(--teal-600)';
           }
           setText(btn, 'name', g.fullName);
@@ -300,125 +396,28 @@ export function renderCRMModule() {
           setText(btn, 'meta', `${g.segment} · ${g.totalStays} estadías · ${formatCurrency(g.totalSpent)}`);
           btn.addEventListener('click', () => {
             m5Ui.selectedGuestId = g.id;
-            renderContent();
+            renderProfileDetail(g);
           });
-          return btn;
-        })
-      );
-
-      if (selectedGuest) {
-        const gRes = state.reservations.filter((r) => r.guestId === selectedGuest.id);
-        const gFolios = state.folios.filter((f) => f.guestId === selectedGuest.id);
-        const gComplaints = state.complaints.filter((c) => c.guestId === selectedGuest.id);
-
-        const detail = clone('detalle-huesped-360');
-        setText(detail, 'segment-tier', `${selectedGuest.segment} · Nivel ${selectedGuest.loyaltyTier}`);
-        setText(detail, 'full-name', selectedGuest.fullName);
-        setText(
-          detail,
-          'contact-pii',
-          `${selectedGuest.documentType} ${maskDocument(selectedGuest.documentNumber, canViewFullPII)} · ${maskEmail(selectedGuest.email, canViewFullPII)} · ${maskPhone(selectedGuest.phone, canViewFullPII)}`
-        );
-        mountRef(
-          detail,
-          'consent-status',
-          StatusText({
-            label: selectedGuest.privacyConsentISO27701 ? 'Privacidad Consentida' : 'Sin consentimiento',
-            variant: selectedGuest.privacyConsentISO27701 ? 'success' : 'warning',
-          })
-        );
-
-        mountRef(
-          detail,
-          'kpis',
-          StatTile({ label: 'Puntos Fidelización', value: selectedGuest.loyaltyPoints.toLocaleString('es-PE'), tone: 'teal' }),
-          StatTile({ label: 'Estadías Acumuladas', value: selectedGuest.totalStays }),
-          StatTile({ label: 'Gasto Histórico', value: formatCurrency(selectedGuest.totalSpent) })
-        );
-
-        setText(detail, 'preferences', selectedGuest.preferences.length > 0 ? selectedGuest.preferences.join(' · ') : 'Sin preferencias registradas');
-        setVisible(detail, 'notes', Boolean(selectedGuest.notes));
-        if (selectedGuest.notes) setText(detail, 'notes', `Nota: ${selectedGuest.notes}`);
-
-        setText(detail, 'res-title', `Reservas y Folios (${gRes.length})`);
-        const resFolioItems = [
-          ...gRes.map((r) => {
-            const row = clone('item-huesped-reserva');
-            setText(row, 'label', `${r.code} (${r.status})`);
-            setText(row, 'amount', formatCurrency(r.totalAmount));
-            return row;
-          }),
-          ...gFolios.map((f) => {
-            const row = clone('item-huesped-folio');
-            setText(row, 'label', `Folio ${f.code} · Hab. ${f.roomNumber}`);
-            setText(row, 'balance', `Saldo ${formatCurrency(f.balance)}`);
-            return row;
-          }),
-        ];
-        mountRef(
-          detail,
-          'res-folio-list',
-          resFolioItems.length > 0
-            ? resFolioItems
-            : h('div', { className: 'text-xs text-slate-400' }, 'Sin reservas ni folios asociados.')
-        );
-
-        setText(detail, 'comp-title', `Reclamos Asociados (${gComplaints.length})`);
-        mountRef(
-          detail,
-          'comp-list',
-          gComplaints.length === 0
-            ? h('div', { className: 'text-xs text-slate-400' }, 'Sin reclamos registrados.')
-            : gComplaints.map((c) => {
-                const row = clone('item-huesped-reclamo');
-                setText(row, 'code', `${c.code} · Hab. ${c.roomNumber || 'N/A'}`);
-                mountRef(row, 'status', StatusText({ label: c.status, variant: getStatusVariant(c.status) }));
-                setText(row, 'desc', c.description);
-                return row;
-              })
-        );
-
-        mountRef(tabBody, 'detail-slot', detail);
-      } else {
-        mountRef(
-          tabBody,
-          'detail-slot',
-          EmptyState({ iconName: 'users', title: 'Selecciona un huésped', description: 'Elige un perfil del listado izquierdo.' })
-        );
-      }
+          fragment.appendChild(btn);
+        });
+        return fragment;
+      };
+      bindPagedContainer({
+        container: getRef(tabBody, 'guests-list'),
+        key: 'm5.perfil360',
+        list: getPagedList('m5.perfil360', { path: '/m5/perfiles', map: mapCRMProfiles, pageSize: 10 }),
+        filters: { searchPlaceholder: 'Buscar huésped, documento, correo o empresa…' },
+        renderBody: renderProfileRows,
+        empty: { iconName: 'users', title: 'Sin perfiles CRM', description: 'Aún no hay huéspedes con perfil CRM.' },
+        noMatch: { iconName: 'search', title: 'Sin perfiles coincidentes', description: 'Prueba con otra búsqueda.' },
+      });
     } else if (activeTab === 'segmentacion') {
-      const segments = ['Todos', 'Corporativo', 'VIP', 'Vacacional', 'Frecuente', 'Nuevo'];
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.segmentacion);
       tabBody = view;
-
-      mountRef(
-        tabBody,
-        'filter-pills',
-        segments.map((seg) =>
-          h(
-            'button',
-            {
-              type: 'button',
-              className: `filter-pill${m5Ui.segmentFilter === seg ? ' is-active' : ''}`,
-              onClick: () => {
-                m5Ui.segmentFilter = seg;
-                renderContent();
-              },
-            },
-            seg
-          )
-        )
-      );
-
-      const filteredGuests =
-        m5Ui.segmentFilter === 'Todos'
-          ? state.guests
-          : state.guests.filter((g) => g.segment === m5Ui.segmentFilter);
-
-      mountRef(
-        tabBody,
-        'tbody',
-        filteredGuests.map((g) => {
+      getRef(tabBody, 'filter-pills')?.remove();
+      const renderSegmentRows = (rows) => {
+        const fragment = document.createDocumentFragment();
+        rows.forEach((g) => {
           const row = clone('fila-segmento');
           setText(row, 'name', g.fullName);
           setText(row, 'segment', g.segment);
@@ -434,68 +433,93 @@ export function renderCRMModule() {
               showIcon: g.marketingOptIn,
             })
           );
-          return row;
-        })
-      );
+          fragment.appendChild(row);
+        });
+        return fragment;
+      };
+      bindPagedContainer({
+        container: getRef(tabBody, 'tbody'),
+        key: 'm5.segmentacion',
+        list: getPagedList('m5.segmentacion', { path: '/m5/perfiles', map: mapCRMProfiles, pageSize: 10 }),
+        filters: {
+          searchPlaceholder: 'Buscar huésped, documento, correo o empresa…',
+          statusOptions: [
+            { value: '', label: 'Todos los segmentos' },
+            ...state.segments.map((segment) => ({ value: segment.name, label: segment.name })),
+          ],
+        },
+        renderBody: renderSegmentRows,
+        empty: { iconName: 'users', title: 'Sin perfiles CRM', description: 'Aún no hay huéspedes con perfil CRM.' },
+        noMatch: { iconName: 'search', title: 'Sin perfiles coincidentes', description: 'Prueba con otra búsqueda o segmento.' },
+      });
     } else if (activeTab === 'fidelizacion') {
-      // Catálogo de beneficios real (g5_crm.beneficio), leído una vez desde el perfil de fidelización.
       const rewards = m5Ui.rewards ?? [];
-      const rewardsSource = state.guests.find((g) => g.profileId);
-      if (m5Ui.rewards === null && !m5Ui.rewardsLoading && rewardsSource) {
-        m5Ui.rewardsLoading = true;
-        apiV1Request(`/m5/fidelizacion/perfiles/${rewardsSource.profileId}`)
-          .then((res) => {
-            m5Ui.rewards = (res?.data?.beneficios ?? []).map((b) => ({ label: b.nombre, points: Number(b.puntos_requeridos) || 0 }));
-          })
-          .catch(() => {
-            m5Ui.rewards = [];
-          })
-          .finally(() => {
-            m5Ui.rewardsLoading = false;
-            renderContent();
-          });
-      }
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.fidelizacion);
       tabBody = view;
       mountRef(tabBody, 'award-icon', icon('award', 'w-4 text-teal'));
 
-      mountRef(
-        tabBody,
-        'guests-list',
-        state.guests.map((g) => {
+      const renderRewards = (guest) => {
+        if (!guest) return;
+        setText(tabBody, 'rewards-title', `Catálogo de recompensas (${guest.fullName})`);
+        setText(tabBody, 'points-available', `${guest.loyaltyPoints.toLocaleString('es-PE')} puntos`);
+        mountRef(tabBody, 'rewards-list',
+          m5Ui.rewardsLoading
+            ? h('div', { className: 'text-xs text-slate-400' }, 'Cargando recompensas…')
+            : rewards.map((rw) => {
+                const row = clone('item-recompensa');
+                setText(row, 'label', rw.label);
+                setText(row, 'cost', `${rw.points.toLocaleString('es-PE')} puntos`);
+                const btn = getRef(row, 'redeem-btn');
+                setVisible(row, 'redeem-btn', canEditCurrentTab);
+                if (canEditCurrentTab && btn) {
+                  btn.disabled = guest.loyaltyPoints < rw.points;
+                  btn.addEventListener('click', () => erpStore.redeemLoyaltyPoints(guest.id, rw.points, rw.label));
+                }
+                return row;
+              })
+        );
+        if (m5Ui.rewards === null && !m5Ui.rewardsLoading) {
+          m5Ui.rewardsLoading = true;
+          apiV1Request(`/m5/fidelizacion/perfiles/${encodeURIComponent(guest.profileId)}`)
+            .then((response) => {
+              m5Ui.rewards = (response?.data?.beneficios ?? []).map((item) => ({ label: item.nombre, points: Number(item.puntos_requeridos) || 0 }));
+            })
+            .catch(() => { m5Ui.rewards = []; })
+            .finally(() => {
+              m5Ui.rewardsLoading = false;
+              if (m5Ui.selectedLoyaltyGuestId === guest.id) renderContent();
+            });
+        }
+      };
+
+      const renderLoyaltyRows = (rows) => {
+        const selected = rows.find((guest) => guest.id === m5Ui.selectedLoyaltyGuestId) || rows[0];
+        if (selected && selected.id !== m5Ui.selectedLoyaltyGuestId) m5Ui.selectedLoyaltyGuestId = selected.id;
+        renderRewards(selected);
+        const fragment = document.createDocumentFragment();
+        rows.forEach((g) => {
           const item = clone('item-fidelizacion-huesped');
-          if (selectedLoyaltyGuest?.id === g.id) item.classList.add('bg-teal-soft');
+          if (selected?.id === g.id) item.classList.add('bg-teal-soft');
           setText(item, 'name', g.fullName);
           setText(item, 'meta', `Nivel ${g.loyaltyTier} · ${g.totalStays} estadías`);
           setText(item, 'points', `${g.loyaltyPoints.toLocaleString('es-PE')} pts`);
           item.addEventListener('click', () => {
             m5Ui.selectedLoyaltyGuestId = g.id;
-            renderContent();
+            renderRewards(g);
           });
-          return item;
-        })
-      );
-
-      if (selectedLoyaltyGuest) {
-        setText(tabBody, 'rewards-title', `Catálogo de Recompensas (${selectedLoyaltyGuest.fullName})`);
-        setText(tabBody, 'points-available', `${selectedLoyaltyGuest.loyaltyPoints.toLocaleString('es-PE')} puntos`);
-        mountRef(
-          tabBody,
-          'rewards-list',
-          rewards.map((rw) => {
-            const row = clone('item-recompensa');
-            setText(row, 'label', rw.label);
-            setText(row, 'cost', `${rw.points.toLocaleString('es-PE')} puntos`);
-            const btn = getRef(row, 'redeem-btn');
-            setVisible(row, 'redeem-btn', canEditCurrentTab);
-            if (canEditCurrentTab && btn) {
-              btn.disabled = selectedLoyaltyGuest.loyaltyPoints < rw.points;
-              btn.addEventListener('click', () => erpStore.redeemLoyaltyPoints(selectedLoyaltyGuest.id, rw.points, rw.label));
-            }
-            return row;
-          })
-        );
-      }
+          fragment.appendChild(item);
+        });
+        return fragment;
+      };
+      bindPagedContainer({
+        container: getRef(tabBody, 'guests-list'),
+        key: 'm5.fidelizacion',
+        list: getPagedList('m5.fidelizacion', { path: '/m5/perfiles', map: mapCRMProfiles, pageSize: 10 }),
+        filters: { searchPlaceholder: 'Buscar huésped, documento, correo o empresa…' },
+        renderBody: renderLoyaltyRows,
+        empty: { iconName: 'award', title: 'Sin perfiles de fidelización', description: 'Aún no hay huéspedes en el programa.' },
+        noMatch: { iconName: 'search', title: 'Sin huéspedes coincidentes', description: 'Prueba con otra búsqueda.' },
+      });
     } else if (activeTab === 'campanas') {
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.campanas);
       tabBody = view;
@@ -504,10 +528,9 @@ export function renderCRMModule() {
         mountRef(tabBody, 'new-icon', icon('plus', 'w-3.5'));
         getRef(tabBody, 'new-btn').addEventListener('click', openCampaignModal);
       }
-      mountRef(
-        tabBody,
-        'grid',
-        state.campaigns.map((cp) => {
+      const renderCampaigns = (rows) => {
+        const fragment = document.createDocumentFragment();
+        rows.forEach((cp) => {
           const card = clone('card-campana');
           setText(card, 'seg-channel', `${cp.segment} · Canal ${cp.channel}`);
           mountRef(card, 'status', StatusText({ label: cp.status, variant: getStatusVariant(cp.status) }));
@@ -523,9 +546,28 @@ export function renderCRMModule() {
             btn.textContent = cp.status === 'Activa' ? 'Finalizar campaña' : 'Reactivar campaña';
             btn.addEventListener('click', () => erpStore.toggleCampaignStatus(cp.id, nextStatus));
           }
-          return card;
-        })
-      );
+          fragment.appendChild(card);
+        });
+        return fragment;
+      };
+      bindPagedContainer({
+        container: getRef(tabBody, 'grid'),
+        key: 'm5.campanas',
+        list: getPagedList('m5.campanas', { path: '/m5/campanas', map: mapCampaignRows, pageSize: 10 }),
+        filters: {
+          searchPlaceholder: 'Buscar campaña, segmento o canal…',
+          statusOptions: [
+            { value: '', label: 'Todos los estados' },
+            { value: 'PROGRAMADA', label: 'Programada' },
+            { value: 'ACTIVA', label: 'Activa' },
+            { value: 'CERRADA', label: 'Finalizada' },
+            { value: 'CANCELADA', label: 'Cancelada' },
+          ],
+        },
+        renderBody: renderCampaigns,
+        empty: { iconName: 'megaphone', title: 'Sin campañas', description: 'Aún no hay campañas registradas.' },
+        noMatch: { iconName: 'search', title: 'Sin campañas coincidentes', description: 'Prueba con otra búsqueda o estado.' },
+      });
     } else if (activeTab === 'reclamos') {
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.reclamos);
       tabBody = view;
@@ -534,10 +576,9 @@ export function renderCRMModule() {
         mountRef(tabBody, 'new-icon', icon('plus', 'w-3.5'));
         getRef(tabBody, 'new-btn').addEventListener('click', openComplaintModal);
       }
-      mountRef(
-        tabBody,
-        'list',
-        state.complaints.map((cmp) => {
+      const renderComplaints = (rows) => {
+        const fragment = document.createDocumentFragment();
+        rows.forEach((cmp) => {
           const card = clone('fila-reclamo');
           setText(card, 'title', `${cmp.code} · ${cmp.guestName}${cmp.roomNumber ? ` (Hab. ${cmp.roomNumber})` : ''}`);
           setText(card, 'meta', `${cmp.category} · Severidad ${cmp.severity} · Sentimiento IA: ${cmp.sentiment}`);
@@ -561,9 +602,29 @@ export function renderCRMModule() {
               return hRow;
             })
           );
-          return card;
-        })
-      );
+          fragment.appendChild(card);
+        });
+        return fragment;
+      };
+      bindPagedContainer({
+        container: getRef(tabBody, 'list'),
+        key: 'm5.reclamos',
+        list: getPagedList('m5.reclamos', { path: '/m5/reclamos', map: mapComplaintRows, pageSize: 10 }),
+        filters: {
+          searchPlaceholder: 'Buscar código, huésped, tipo o descripción…',
+          statusOptions: [
+            { value: '', label: 'Todos los estados' },
+            { value: 'ABIERTO', label: 'Abierto' },
+            { value: 'EN_SEGUIMIENTO', label: 'En seguimiento' },
+            { value: 'DERIVADO', label: 'Derivado' },
+            { value: 'EN_ATENCION', label: 'En atención' },
+            { value: 'CERRADO', label: 'Resuelto' },
+          ],
+        },
+        renderBody: renderComplaints,
+        empty: { iconName: 'messageSquare', title: 'Sin reclamos', description: 'Aún no hay reclamos registrados.' },
+        noMatch: { iconName: 'search', title: 'Sin reclamos coincidentes', description: 'Prueba con otra búsqueda o estado.' },
+      });
     } else if (activeTab === 'solicitudes') {
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.solicitudes);
       tabBody = view;
@@ -573,10 +634,9 @@ export function renderCRMModule() {
         mountRef(tabBody, 'new-icon', icon('plus', 'w-3.5'));
         getRef(tabBody, 'new-btn').addEventListener('click', openRequestModal);
       }
-      mountRef(
-        tabBody,
-        'tbody',
-        state.guestRequests.map((req) => {
+      const renderRequestRows = (rows) => {
+        const fragment = document.createDocumentFragment();
+        rows.forEach((req) => {
           const row = clone('fila-solicitud');
           setText(row, 'code', req.code);
           setText(row, 'source', req.source || 'Portal Autoatención');
@@ -591,9 +651,29 @@ export function renderCRMModule() {
           if (canAttend) {
             getRef(row, 'attend-btn').addEventListener('click', () => erpStore.updateGuestRequestStatus(req.id, 'ATENDIDA'));
           }
-          return row;
-        })
-      );
+          fragment.appendChild(row);
+        });
+        return fragment;
+      };
+      bindPagedContainer({
+        container: getRef(tabBody, 'tbody'),
+        key: 'm5.solicitudes',
+        list: getPagedList('m5.solicitudes', { path: '/m5/solicitudes', map: mapGuestRequestRows, pageSize: 10 }),
+        filters: {
+          searchPlaceholder: 'Buscar código, huésped, habitación o solicitud…',
+          statusOptions: [
+            { value: '', label: 'Todos los estados' },
+            { value: 'REGISTRADA', label: 'Registrada' },
+            { value: 'DERIVADA', label: 'Derivada' },
+            { value: 'EN_ATENCION', label: 'En atención' },
+            { value: 'ATENDIDA', label: 'Atendida' },
+            { value: 'CANCELADA', label: 'Cancelada' },
+          ],
+        },
+        renderBody: renderRequestRows,
+        empty: { iconName: 'clipboardList', title: 'Sin solicitudes', description: 'Aún no hay solicitudes de huéspedes.' },
+        noMatch: { iconName: 'search', title: 'Sin solicitudes coincidentes', description: 'Prueba con otra búsqueda o estado.' },
+      });
     } else if (activeTab === 'encuestas') {
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.encuestas);
       tabBody = view;
@@ -603,25 +683,27 @@ export function renderCRMModule() {
         getRef(tabBody, 'new-btn').addEventListener('click', openSurveyModal);
       }
 
-      const avgScore = state.surveys.length > 0
-        ? (state.surveys.reduce((s, r) => s + Number(r.overallScore || 0), 0) / state.surveys.length).toFixed(2)
-        : null;
-      const promoters = state.surveys.filter((s) => Number(s.npsScore ?? s.npsRecommend ?? 0) >= 9).length;
-      const detractors = state.surveys.filter((s) => Number(s.npsScore ?? s.npsRecommend ?? 0) <= 6).length;
-      const npsVal = state.surveys.length > 0 ? Math.round(((promoters - detractors) / state.surveys.length) * 100) : null;
-
-      mountRef(
-        tabBody,
-        'kpis',
-        StatTile({ label: 'Satisfacción Promedio', value: avgScore === null ? '—' : `${avgScore} / 5.0`, tone: 'teal' }),
-        StatTile({ label: 'Net Promoter Score (NPS)', value: npsVal === null ? '—' : `${npsVal >= 0 ? '+' : ''}${npsVal}`, tone: 'success' }),
-        StatTile({ label: 'Encuestas Respondidas', value: String(state.surveys.length) })
-      );
-
-      mountRef(
-        tabBody,
-        'list',
-        state.surveys.map((srv) => {
+      const surveyList = getPagedList('m5.encuestas', {
+        path: '/m5/opiniones?status=ENCUESTA',
+        map: mapSurveyRows,
+        pageSize: 10,
+      });
+      const renderSurveys = (rows) => {
+        const avgScore = rows.length > 0
+          ? (rows.reduce((sum, item) => sum + Number(item.overallScore || 0), 0) / rows.length).toFixed(2)
+          : null;
+        const promoters = rows.filter((item) => Number(item.npsScore ?? 0) >= 9).length;
+        const detractors = rows.filter((item) => Number(item.npsScore ?? 0) <= 6).length;
+        const npsVal = rows.length > 0 ? Math.round(((promoters - detractors) / rows.length) * 100) : null;
+        mountRef(
+          tabBody,
+          'kpis',
+          StatTile({ label: 'Promedio de esta página', value: avgScore === null ? '—' : `${avgScore} / 5.0`, tone: 'teal' }),
+          StatTile({ label: 'NPS de esta página', value: npsVal === null ? '—' : `${npsVal >= 0 ? '+' : ''}${npsVal}`, tone: 'success' }),
+          StatTile({ label: 'Encuestas registradas', value: String(surveyList.state.total) })
+        );
+        const fragment = document.createDocumentFragment();
+        rows.forEach((srv) => {
           const row = clone('fila-encuesta');
           setText(row, 'guest', srv.guestName);
           setText(row, 'date', ` · ${srv.date}`);
@@ -632,16 +714,25 @@ export function renderCRMModule() {
           setText(row, 'breakdown', `Limpieza: ${cln} · Servicio: ${sr} · Gastronomía: ${fd}`);
           setText(row, 'score', `${srv.overallScore} / 5`);
           setText(row, 'nps', `NPS: ${srv.npsScore ?? srv.npsRecommend ?? '—'}/10`);
-          return row;
-        })
-      );
+          fragment.appendChild(row);
+        });
+        return fragment;
+      };
+      bindPagedContainer({
+        container: getRef(tabBody, 'list'),
+        key: 'm5.encuestas',
+        list: surveyList,
+        filters: { searchPlaceholder: 'Buscar huésped o comentario…' },
+        renderBody: renderSurveys,
+        empty: { iconName: 'star', title: 'Sin encuestas', description: 'Aún no hay encuestas registradas.' },
+        noMatch: { iconName: 'search', title: 'Sin encuestas coincidentes', description: 'Prueba con otra búsqueda.' },
+      });
     } else if (activeTab === 'resenas') {
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.resenas);
       tabBody = view;
-      mountRef(
-        tabBody,
-        'list',
-        state.reviews.map((rev) => {
+      const renderReviews = (rows) => {
+        const fragment = document.createDocumentFragment();
+        rows.forEach((rev) => {
           const card = clone('card-resena');
           setText(card, 'guest', rev.guestName || rev.author || 'Huésped');
           setText(card, 'channel-date', ` · ${rev.channel} · ${rev.date}`);
@@ -667,14 +758,24 @@ export function renderCRMModule() {
               delete m5Ui.reviewReplyDraft[rev.id];
             });
           }
-          return card;
-        })
-      );
+          fragment.appendChild(card);
+        });
+        return fragment;
+      };
+      bindPagedContainer({
+        container: getRef(tabBody, 'list'),
+        key: 'm5.resenas',
+        list: getPagedList('m5.resenas', { path: '/m5/opiniones?status=RESENA', map: mapReviewRows, pageSize: 10 }),
+        filters: { searchPlaceholder: 'Buscar huésped, título o comentario…' },
+        renderBody: renderReviews,
+        empty: { iconName: 'star', title: 'Sin reseñas', description: 'Aún no hay reseñas registradas.' },
+        noMatch: { iconName: 'search', title: 'Sin reseñas coincidentes', description: 'Prueba con otra búsqueda.' },
+      });
     } else if (activeTab === 'portal_ia') {
       const portalGuest = state.guests.find((g) => g.id === m5Ui.portalGuestId) || state.guests[0];
       const guestFolio = portalGuest ? state.folios.find((f) => f.guestId === portalGuest.id) : null;
       const guestRes = portalGuest ? state.reservations.find((r) => r.guestId === portalGuest.id) : null;
-      const guestRoom = guestFolio?.roomNumber || guestRes?.roomNumber || '101';
+      const guestRoom = guestFolio?.roomNumber || guestRes?.roomNumber || '';
 
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.portal_ia);
       tabBody = view;
@@ -687,8 +788,8 @@ export function renderCRMModule() {
         state.guests.map((g) => {
           const f = state.folios.find((x) => x.guestId === g.id);
           const r = state.reservations.find((x) => x.guestId === g.id);
-          const rm = f?.roomNumber || r?.roomNumber || '101';
-          return h('option', { value: g.id, selected: portalGuest?.id === g.id }, `Huésped activo: ${g.fullName} (Hab. ${rm})`);
+          const rm = f?.roomNumber || r?.roomNumber || '';
+          return h('option', { value: g.id, selected: portalGuest?.id === g.id }, `Huésped activo: ${g.fullName}${rm ? ` (Hab. ${rm})` : ''}`);
         })
       );
       if (portalGuest) guestSel.value = portalGuest.id;
@@ -697,7 +798,7 @@ export function renderCRMModule() {
         renderContent();
       });
 
-      setText(tabBody, 'stay-title', `Mi Estadía y Estado de Cuenta (Hab. ${guestRoom})`);
+      setText(tabBody, 'stay-title', guestRoom ? `Mi estadía y estado de cuenta (Hab. ${guestRoom})` : 'Sin habitación activa');
       const charges = guestFolio?.charges || [];
       mountRef(
         tabBody,

@@ -25,6 +25,20 @@ const MODULE_TITLES = {
 const appRoot = document.getElementById('app');
 let lastPath = null;
 
+const ROUTE_RESOURCES = {
+  '/': ['resumen'],
+  '/reservas': ['habitaciones', 'huespedes', 'reservas', 'tarifas', 'listaEspera', 'tarifaDinamica', 'catalogos', 'cuentas'],
+  '/housekeeping': ['habitaciones', 'reservas', 'ordenesLimpieza', 'incidencias', 'ordenesTrabajo', 'insumos', 'activos', 'preventivo', 'catalogosM2', 'requisiciones'],
+  '/servicios': ['habitaciones', 'reservas', 'cuentas', 'catalogo', 'comandas', 'consumos', 'inventario', 'ordenesCompra', 'proveedores', 'recetas', 'requisiciones'],
+  '/finanzas': ['cuentas', 'comprobantes', 'reportes', 'turnos', 'gastos', 'cxc'],
+  '/crm': ['huespedes', 'reservas', 'cuentas', 'perfiles', 'campanas', 'reclamos', 'opiniones', 'solicitudes', 'segmentos'],
+  '/configuracion': ['bitacoras'],
+};
+
+function resourcesForRoute(route = getRoute()) {
+  return ROUTE_RESOURCES[route.basePath] ?? ['resumen'];
+}
+
 function renderProtectedModule(mod, factoryFn) {
   if (!erpStore.canView(mod)) {
     return AccessDeniedCard({
@@ -94,6 +108,9 @@ function renderApp() {
 }
 
 erpStore.subscribe(renderApp);
-subscribeRouter(renderApp);
+subscribeRouter((route) => {
+  renderApp();
+  erpStore.ensureResources(resourcesForRoute(route));
+});
 
-erpStore.init().then(renderApp);
+erpStore.init(resourcesForRoute()).then(renderApp);

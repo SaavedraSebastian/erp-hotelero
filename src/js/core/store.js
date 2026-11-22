@@ -39,6 +39,9 @@ const storeData = {
   directoryUsers: [],
   authLoading: true,
   initStarted: false,
+  initialResourceKeys: ['resumen'],
+  loadedResources: new Set(),
+  resourceLoadQueue: Promise.resolve(),
 };
 
 function emit() {
@@ -135,9 +138,10 @@ export const erpStore = {
   get loadInfo() { return storeData.loadInfo; },
   get canViewFullPII() { return Boolean(storeData.currentPermissions?.canViewFullPII); },
 
-  async init() {
+  async init(initialResourceKeys = ['resumen']) {
     if (storeData.initStarted) return;
     storeData.initStarted = true;
+    storeData.initialResourceKeys = [...new Set(['resumen', ...initialResourceKeys])];
     try {
       localStorage.removeItem('sgh_erp_current_user_v1');
       localStorage.removeItem('sgh_erp_demo_state_v1');
@@ -173,15 +177,12 @@ export const erpStore = {
     // El estado se carga DESPUÉS de resolver la sesión: la API v1 exige el Bearer token de Supabase,
     // que se registra dentro de apiGetMe(). Cargar en paralelo producía 401 y caía a datos locales.
     await Promise.all([configPromise, authPromise]);
-    await erpStore.refreshState();
+    await erpStore.refreshState(storeData.initialResourceKeys, { reset: true });
     storeData.authLoading = false;
     emit();
   },
 
-  /**
-   * Lee de PostgreSQL (vía /api/v1) todo lo que tiene API; el resto queda vacío.
-   * Con `keys` solo se vuelven a pedir esos recursos (p. ej. tras una escritura).
-   */
+  /** Lee bajo demanda los recursos indicados y conserva en memoria los ya visitados. */
   /** Incorpora (o completa) un huésped elegido en un buscador para que las acciones lo reconozcan. */
   ensureGuest(guest) {
     const st = storeData.state;
@@ -191,15 +192,20 @@ export const erpStore = {
     else Object.assign(cur, Object.fromEntries(Object.entries(guest).filter(([, v]) => v !== undefined && v !== '')));
   },
 
-  async refreshState(keys) {
-    const { state, source, errors, truncated, forbidden } = await loadERPState(keys ? { keys } : undefined);
+  async refreshState(keys = ['resumen'], options = {}) {
+    const requestedKeys = [...new Set(keys.length > 0 ? keys : ['resumen'])];
+    const { state, source, errors, truncated, forbidden } = await loadERPState({ keys: requestedKeys, reset: Boolean(options.reset) });
     storeData.state = state;
     storeData.loadInfo = { source, errors, truncated, forbidden };
-    if (keys?.length) {
+    if (options.reset) {
+      storeData.loadedResources.clear();
+      resetPagedLists();
+    }
+    requestedKeys.forEach((key) => storeData.loadedResources.add(key));
+    if (!options.reset) {
       clearFinanceSummaryCache();
       reloadActivePagedList();
-    } // tras guardar: vuelve a leer la lista que está a la vista
-    else resetPagedLists(); // carga completa: descarta lo paginado anterior
+    }
     if (source === 'postgresql_database' || source === 'partial') {
       storeData.lastSyncedAt = new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
     }
@@ -214,7 +220,7 @@ export const erpStore = {
     }
     // Solo en la carga completa; las reservas se amplían con "Cargar más" en su pantalla.
     const notable = truncated.filter((t) => t !== 'reservas');
-    if (!keys && notable.length > 0) {
+    if (notable.length > 0) {
       erpStore.pushToast({
         title: 'Datos limitados',
         detail: `Se cargaron solo los registros más recientes de: ${notable.join(', ')}.`,
@@ -222,6 +228,18 @@ export const erpStore = {
       });
     }
     return { source, errors };
+  },
+
+  /** Carga una sola vez los recursos que necesita la ruta actual. */
+  ensureResources(keys = []) {
+    const wanted = [...new Set(['resumen', ...keys])];
+    const run = async () => {
+      const missing = wanted.filter((key) => !storeData.loadedResources.has(key));
+      if (missing.length === 0 || !storeData.currentUser) return { source: storeData.loadInfo?.source, errors: [] };
+      return erpStore.refreshState(missing);
+    };
+    storeData.resourceLoadQueue = storeData.resourceLoadQueue.then(run, run);
+    return storeData.resourceLoadQueue;
   },
 
   pushToast(toast) {
@@ -268,7 +286,7 @@ export const erpStore = {
     storeData.allRolePermissions = matrix ?? {};
 
     // Con el token ya registrado, cargar los datos reales de la base.
-    await erpStore.refreshState();
+    await erpStore.refreshState(storeData.initialResourceKeys, { reset: true });
 
     if (user.role === 'admin' || user.role === 'auditor') {
       hydrateAdminDirectory(user.role, res.data.authMode);
@@ -290,6 +308,8 @@ export const erpStore = {
     storeData.currentPermissions = null;
     storeData.allRolePermissions = {};
     storeData.directoryUsers = [];
+    storeData.loadedResources.clear();
+    resetPagedLists();
     emit();
   },
 
@@ -312,7 +332,8 @@ export const erpStore = {
   },
 
   async reloadFromDatabase() {
-    const { source } = await erpStore.refreshState();
+    const keys = storeData.loadedResources.size > 0 ? [...storeData.loadedResources] : ['resumen'];
+    const { source } = await erpStore.refreshState(keys, { reset: true });
     if (source === 'postgresql_database') {
       erpStore.pushToast({ title: 'Datos recargados', detail: 'Se volvió a leer la información desde la base de datos.', type: 'success' });
     }

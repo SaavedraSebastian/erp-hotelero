@@ -613,7 +613,7 @@ export function renderReservasModule() {
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.reservas);
       tabBody = view;
       // Historial completo, paginado desde el servidor (con búsqueda, estado y fechas).
-      const list = getPagedList('m1.reservas', { path: '/m1/reservas', map: mapReservations, pageSize: 20 });
+      const list = getPagedList('m1.reservas', { path: '/m1/reservas', map: mapReservations, pageSize: 10 });
 
       const renderReservasTable = (rows) => {
         const tbl = clone('tabla-reservas');
@@ -682,7 +682,7 @@ export function renderReservasModule() {
         mountRef(tabBody, 'plus-icon', icon('plus', 'w-3.5'));
         getRef(tabBody, 'new-rate-btn')?.addEventListener('click', () => openRateModal(null));
       }
-      const rateList = getPagedList('m1.tarifas', { path: '/m1/tarifas', map: mapRatePlans, pageSize: 20 });
+      const rateList = getPagedList('m1.tarifas', { path: '/m1/tarifas', map: mapRatePlans, pageSize: 10 });
       const renderRateCards = (rows) =>
         h('div', { className: 'grid-2' },
           ...rows.map((rp) => {
@@ -868,7 +868,7 @@ export function renderReservasModule() {
         mountRef(tabBody, 'plus-icon', icon('plus', 'w-3.5'));
         getRef(tabBody, 'new-waitlist-btn')?.addEventListener('click', openWaitlistModal);
       }
-      const waitList = getPagedList('m1.espera', { path: '/m1/lista-espera', map: mapWaitlist, pageSize: 20, filters: { status: 'PENDIENTE' } });
+      const waitList = getPagedList('m1.espera', { path: '/m1/lista-espera', map: mapWaitlist, pageSize: 10, filters: { status: 'PENDIENTE' } });
       const renderWaitTable = (rows) => {
         const tbl = clone('tabla-espera');
         mountRef(
@@ -990,7 +990,7 @@ export function renderReservasModule() {
         getRef(tabBody, 'new-guest-btn')?.addEventListener('click', () => openGuestModal(null));
       }
 
-      const guestList = getPagedList('m1.huespedes', { path: '/m1/huespedes', map: mapGuests, pageSize: 20 });
+      const guestList = getPagedList('m1.huespedes', { path: '/m1/huespedes', map: mapGuests, pageSize: 10 });
       const renderGuestsTable = (rows) => {
         const tbl = clone('tabla-huespedes');
         if (canEditCurrentTab) setVisible(tbl, 'actions-th', true);
