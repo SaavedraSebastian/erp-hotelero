@@ -719,8 +719,10 @@ export function createWriteActions(ctx) {
 
       const isComanda = ['Restaurante', 'Bar', 'Room Service'].includes(input.source);
       const isRoomService = input.source === 'Room Service';
+      const isRoomCharge = forma === 'cargo a la habitación';
+      const usesTable = isComanda && !isRoomService && !isRoomCharge;
       let table = null;
-      if (isComanda && !isRoomService) {
+      if (usesTable) {
         table = (st.tables ?? []).find((t) => t.number === input.tableNumber);
         if (!table || table.status !== 'Libre') {
           return fail('Mesa no disponible', 'Selecciona una mesa libre; la mesa elegida ya tiene una comanda abierta o está inactiva.');
@@ -746,8 +748,8 @@ export function createWriteActions(ctx) {
               if (isComanda) {
                 await post('/m3/comandas', {
                   id_punto_venta: posId,
-                  modalidad: isRoomService ? 'habitación' : 'mesa',
-                  id_mesa: isRoomService ? undefined : table.id,
+                  modalidad: isRoomService || isRoomCharge ? 'habitación' : 'mesa',
+                  id_mesa: usesTable ? table.id : undefined,
                   id_estadia_externa: stayId || undefined,
                   items,
                 });
