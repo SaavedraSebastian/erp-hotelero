@@ -606,10 +606,19 @@ export function renderServiciosPOSModule() {
         });
       });
 
-      const showTable = m3Ui.posOrigin === 'Restaurante' || m3Ui.posOrigin === 'Bar';
+      const showTable =
+        m3Ui.posPaymentMode === 'Pago Directo' &&
+        (m3Ui.posOrigin === 'Restaurante' || m3Ui.posOrigin === 'Bar');
       setVisible(tabBody, 'table-wrap', showTable);
       const tableSel = getRef(tabBody, 'table-select');
-      const availableTables = state.tables.filter((t) => t.status === 'Libre');
+      const cartPosIds = new Set(
+        m3Ui.cart
+          .map((line) => state.products.find((p) => p.id === line.productId)?.posId)
+          .filter(Boolean)
+      );
+      const availableTables = state.tables.filter(
+        (t) => t.status === 'Libre' && (cartPosIds.size === 0 || cartPosIds.has(t.posId))
+      );
       mount(
         tableSel,
         availableTables.length === 0

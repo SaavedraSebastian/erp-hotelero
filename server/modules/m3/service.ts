@@ -13,6 +13,54 @@ function genCode(prefix: string): string {
   return `${prefix}-${entropy}`.slice(0, 30);
 }
 
+/**
+ * M3 conserva una referencia desacoplada de las estadías de Reservas. La crea
+ * bajo demanda para que una estadía real de M1 pueda utilizarse en POS, Room
+ * Service y Minibar sin depender de filas puente sembradas manualmente.
+ */
+async function ensureExternalStay(client: import('pg').PoolClient, idEstadia: string): Promise<string> {
+  const existing = await client.query(
+    `SELECT 1 FROM g3_servicios.estadia_externa WHERE id_estadia_externa = $1`,
+    [idEstadia]
+  );
+  if (existing.rows[0]) return idEstadia;
+
+  if (!/^\d+$/.test(idEstadia)) {
+    throw new DomainRuleError('La estadía indicada no existe en Reservas ni en el registro externo de Servicios.');
+  }
+
+  const source = await client.query<{
+    id_estadia: string;
+    id_habitacion: string;
+    id_huesped: string;
+  }>(
+    `SELECT
+       e.id_estadia::text AS id_estadia,
+       e.id_habitacion::text AS id_habitacion,
+       r.id_huesped::text AS id_huesped
+     FROM g1_reservas.estadia e
+     JOIN g1_reservas.reserva r ON r.id_reserva = e.id_reserva
+     WHERE e.id_estadia = $1::bigint
+       AND e.estado = 'EN_CURSO'`,
+    [idEstadia]
+  );
+  const stay = source.rows[0];
+  if (!stay) {
+    throw new DomainRuleError('La estadía indicada no existe o ya no se encuentra activa.');
+  }
+
+  await client.query(
+    `INSERT INTO g3_servicios.estadia_externa (
+       id_estadia_externa, id_habitacion_externa, id_huesped_externo
+     ) VALUES ($1, $2, $3)
+     ON CONFLICT (id_estadia_externa) DO UPDATE SET
+       id_habitacion_externa = EXCLUDED.id_habitacion_externa,
+       id_huesped_externo = EXCLUDED.id_huesped_externo`,
+    [stay.id_estadia, stay.id_habitacion, stay.id_huesped]
+  );
+  return stay.id_estadia;
+}
+
 export async function getCatalogoService(ctx: AuthContext) {
   return { data: await withReadOnlyClient((client) => repo.listCatalogo(client), ctx) };
 }
@@ -53,6 +101,9 @@ export async function createComandaService(
   }
 ) {
   return withTransaction(ctx, async (client) => {
+    const externalStayId = input.id_estadia_externa
+      ? await ensureExternalStay(client, input.id_estadia_externa)
+      : null;
     let mesaNombre: string | null = null;
     if (input.modalidad === 'mesa') {
       // Bloquear la mesa serializa dos clics/solicitudes concurrentes y garantiza
@@ -96,7 +147,7 @@ export async function createComandaService(
         input.id_mesa ?? null,
         mesaNombre,
         input.modalidad,
-        input.id_estadia_externa ?? null,
+        externalStayId,
       ]
     );
 
@@ -277,6 +328,9 @@ export async function createConsumoService(
 ) {
   return withTransaction(ctx, async (client) => {
     const numeroConsumo = genCode('CON');
+    const externalStayId = input.id_estadia_externa
+      ? await ensureExternalStay(client, input.id_estadia_externa)
+      : null;
     const resolvedLines: Array<{
       id_item_catalogo: string;
       cantidad: number;
@@ -322,7 +376,7 @@ export async function createConsumoService(
         input.id_cuenta_cobro_externa ?? null,
         total,
         input.forma_cobro,
-        input.id_estadia_externa ?? null,
+        externalStayId,
       ]
     );
 
