@@ -530,44 +530,88 @@ export function renderReservasModule() {
       }));
       renderRoomsRows();
     } else if (activeTab === 'disponibilidad') {
-      const days = ['2026-11-18', '2026-11-19', '2026-11-20', '2026-11-21', '2026-11-22', '2026-11-23', '2026-11-24'];
       const { root: view } = loadViewTemplate(VIEW_HTML.disponibilidad);
       tabBody = view;
       mountRef(tabBody, 'cal-icon', icon('calendar', 'w-4 text-teal'));
+
+      const nextDate = (iso, amount = 1) => {
+        const date = new Date(`${iso}T00:00:00Z`);
+        date.setUTCDate(date.getUTCDate() + amount);
+        return date.toISOString().slice(0, 10);
+      };
+      const rangeDays = (from, to) => {
+        if (!from || !to || from >= to) return [];
+        const days = [];
+        for (let day = from; day < to; day = nextDate(day)) days.push(day);
+        return days;
+      };
+      const formatRange = (days) => {
+        if (days.length === 0) return 'Selecciona un rango válido';
+        const fmt = new Intl.DateTimeFormat('es-PE', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' });
+        return `${fmt.format(new Date(`${days[0]}T00:00:00Z`))} – ${fmt.format(new Date(`${days.at(-1)}T00:00:00Z`))}`;
+      };
+      const reservationUsesRoom = (reservation, roomId) =>
+        reservation.roomId === roomId || reservation.roomIds?.includes(roomId);
+      const isActiveReservation = (reservation) =>
+        !['Cancelada', 'No-Show', 'Check-out'].includes(reservation.status);
 
       const filterIn = getRef(tabBody, 'filter-in');
       const filterOut = getRef(tabBody, 'filter-out');
       const filterType = getRef(tabBody, 'filter-type');
       if (filterIn) {
         filterIn.value = m1Ui.dispIn;
-        filterIn.addEventListener('change', (e) => { m1Ui.dispIn = e.target.value; renderCalendarRows(); });
+        filterIn.addEventListener('change', (e) => {
+          m1Ui.dispIn = e.target.value;
+          if (m1Ui.dispOut <= m1Ui.dispIn) {
+            m1Ui.dispOut = nextDate(m1Ui.dispIn);
+            if (filterOut) filterOut.value = m1Ui.dispOut;
+          }
+          if (filterOut) filterOut.min = nextDate(m1Ui.dispIn);
+          resetLocalPager('m1.disponibilidad');
+          renderCalendarRows();
+        });
       }
       if (filterOut) {
         filterOut.value = m1Ui.dispOut;
-        filterOut.addEventListener('change', (e) => { m1Ui.dispOut = e.target.value; renderCalendarRows(); });
+        filterOut.min = nextDate(m1Ui.dispIn);
+        filterOut.addEventListener('change', (e) => {
+          m1Ui.dispOut = e.target.value;
+          resetLocalPager('m1.disponibilidad');
+          renderCalendarRows();
+        });
       }
       if (filterType) {
         filterType.value = m1Ui.dispType;
-        filterType.addEventListener('change', (e) => { m1Ui.dispType = e.target.value; renderCalendarRows(); });
+        filterType.addEventListener('change', (e) => {
+          m1Ui.dispType = e.target.value;
+          resetLocalPager('m1.disponibilidad');
+          renderCalendarRows();
+        });
       }
 
       const headRow = getRef(tabBody, 'head-row');
-      days.forEach((d) => {
-        headRow?.appendChild(
-          h('th', { className: `text-center font-mono${d === TODAY ? ' cal-col-today' : ''}` }, d.slice(5))
-        );
-      });
-      headRow?.appendChild(h('th', { className: 'text-right' }, 'Acción rango'));
 
       const renderCalendarRows = () => {
-        const rooms = state.rooms.filter((rm) => m1Ui.dispType === 'Todos' || rm.type === m1Ui.dispType);
+        const days = rangeDays(m1Ui.dispIn, m1Ui.dispOut);
+        setText(tabBody, 'range-label', formatRange(days));
+        mount(
+          headRow,
+          h('th', null, 'Habitación'),
+          h('th', null, 'Estado Físico'),
+          ...days.map((d) => h('th', { className: `text-center font-mono${d === TODAY ? ' cal-col-today' : ''}` }, d.slice(5))),
+          h('th', { className: 'text-right' }, 'Acción rango')
+        );
+
+        const filteredRooms = state.rooms.filter((rm) => m1Ui.dispType === 'Todos' || rm.type === m1Ui.dispType);
+        const roomPager = localPager('m1.disponibilidad', filteredRooms, renderCalendarRows, 10);
+        mountRef(tabBody, 'pagination-slot', roomPager.footer);
         mountRef(
           tabBody,
           'tbody',
-          rooms.map((rm) => {
+          roomPager.slice.map((rm) => {
             const isOos = rm.housekeepingStatus === 'Fuera de servicio';
             const rangeRes = state.reservations.find(
-              (r) => r.roomId === rm.id && !['Cancelada', 'No-Show', 'Check-out'].includes(r.status) && m1Ui.dispIn < r.checkOutDate && m1Ui.dispOut > r.checkInDate
+              (r) => reservationUsesRoom(r, rm.id) && isActiveReservation(r) && m1Ui.dispIn < r.checkOutDate && m1Ui.dispOut > r.checkInDate
             );
             let rangeSummary = 'Disponible y Lista';
             let summaryCls = 'text-11 font-medium text-teal';
@@ -596,7 +640,7 @@ export function renderReservasModule() {
                   return h('td', { className: tdCls }, h('span', { className: 'cal-pill cal-pill-blocked' }, 'Bloqueada'));
                 }
                 const res = state.reservations.find(
-                  (r) => r.roomId === rm.id && !['Cancelada', 'No-Show', 'Check-out'].includes(r.status) && d >= r.checkInDate && d < r.checkOutDate
+                  (r) => reservationUsesRoom(r, rm.id) && isActiveReservation(r) && d >= r.checkInDate && d < r.checkOutDate
                 );
                 if (res) {
                   const g = guestById.get(res.guestId);

@@ -218,8 +218,10 @@ export const erpStore = {
         type: 'error',
       });
     }
-    // Solo en la carga completa; las reservas se amplían con "Cargar más" en su pantalla.
-    const notable = truncated.filter((t) => t !== 'reservas');
+    // Los recursos con paginador pueden tener una caché de contexto acotada sin que sus
+    // pantallas estén limitadas: el usuario puede recorrer el total desde el servidor.
+    const paginatedContexts = new Set(['reservas', 'huéspedes recientes']);
+    const notable = truncated.filter((t) => !paginatedContexts.has(t));
     if (notable.length > 0) {
       erpStore.pushToast({
         title: 'Datos limitados',

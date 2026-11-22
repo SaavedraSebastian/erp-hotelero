@@ -46,7 +46,9 @@ const M1_TAB_RESOURCES = {
   checkout: ['habitaciones', 'huespedes', 'reservas', 'cuentas'],
   lista_espera: ['huespedes', 'listaEspera', 'catalogos'],
   ocupacion: ['habitaciones', 'reservas', 'tarifas'],
-  huespedes: ['huespedes', 'reservas'],
+  // El directorio consulta /m1/huespedes directamente con su paginador; no necesita
+  // precargar una página adicional en la caché general.
+  huespedes: [],
   ia_tarifas: ['habitaciones', 'reservas', 'tarifas', 'listaEspera', 'tarifaDinamica'],
 };
 
