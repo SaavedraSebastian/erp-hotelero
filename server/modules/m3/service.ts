@@ -33,11 +33,13 @@ async function ensureExternalStay(client: import('pg').PoolClient, idEstadia: st
     id_estadia: string;
     id_habitacion: string;
     id_huesped: string;
+    estado_estadia: string;
   }>(
     `SELECT
        e.id_estadia::text AS id_estadia,
        e.id_habitacion::text AS id_habitacion,
-       r.id_huesped::text AS id_huesped
+       r.id_huesped::text AS id_huesped,
+       e.estado AS estado_estadia
      FROM g1_reservas.estadia e
      JOIN g1_reservas.reserva r ON r.id_reserva = e.id_reserva
      WHERE e.id_estadia = $1::bigint
@@ -51,12 +53,13 @@ async function ensureExternalStay(client: import('pg').PoolClient, idEstadia: st
 
   await client.query(
     `INSERT INTO g3_servicios.estadia_externa (
-       id_estadia_externa, id_habitacion_externa, id_huesped_externo
-     ) VALUES ($1, $2, $3)
+       id_estadia_externa, id_habitacion_externa, id_huesped_externo, estado_estadia
+     ) VALUES ($1, $2, $3, $4)
      ON CONFLICT (id_estadia_externa) DO UPDATE SET
        id_habitacion_externa = EXCLUDED.id_habitacion_externa,
-       id_huesped_externo = EXCLUDED.id_huesped_externo`,
-    [stay.id_estadia, stay.id_habitacion, stay.id_huesped]
+       id_huesped_externo = EXCLUDED.id_huesped_externo,
+       estado_estadia = EXCLUDED.estado_estadia`,
+    [stay.id_estadia, stay.id_habitacion, stay.id_huesped, stay.estado_estadia]
   );
   return stay.id_estadia;
 }
