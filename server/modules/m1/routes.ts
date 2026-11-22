@@ -47,7 +47,7 @@ export function createM1Router(): Router {
     ctrl.updateHuesped
   );
 
-  router.get('/tarifas', requirePermission(PERMISSIONS.M1_TARIFA_CONSULTAR), ctrl.listTarifas);
+  router.get('/tarifas', requirePermission(PERMISSIONS.M1_TARIFA_CONSULTAR), validateQuery(paginationQuerySchema), ctrl.listTarifas);
 
   router.get(
     '/reservas',

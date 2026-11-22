@@ -10,6 +10,7 @@ import {
   mapFolios,
   mapM2,
   mapDynamicPricing,
+  mapFinanceSummary,
   mapM3,
   mapM4,
   mapM5,
@@ -157,7 +158,7 @@ async function fetchAllPages(path, maxPages) {
       if (Array.isArray(p?.data)) rows.push(...p.data);
     }
   }
-  return { rows, total, truncated: rows.length < total };
+  return { rows, total, pages: totalPages, truncated: rows.length < total };
 }
 
 /** Endpoint sin paginación: { data: <lista u objeto> }. */
@@ -211,7 +212,7 @@ function mapFeatures(raw) {
   return [];
 }
 
-function mapRatePlans(rows) {
+export function mapRatePlans(rows) {
   return rows.map((t) => ({
     id: String(t.id_tarifa),
     name: t.nombre,
@@ -228,7 +229,7 @@ function mapRatePlans(rows) {
   }));
 }
 
-function mapReservations(rows) {
+export function mapReservations(rows) {
   return rows.map((r) => {
     const detalles = Array.isArray(r.detalles) ? r.detalles : [];
     const checkInDate = toDate(r.fecha_ingreso);
@@ -268,7 +269,7 @@ function mapReservations(rows) {
   });
 }
 
-function mapGuests(rows) {
+export function mapGuests(rows) {
   return rows.map((g) => ({
     id: String(g.id_huesped),
     fullName: `${g.nombres ?? ''} ${g.apellidos ?? ''}`.trim(),
@@ -293,7 +294,7 @@ function mapGuests(rows) {
   }));
 }
 
-function mapWaitlist(rows) {
+export function mapWaitlist(rows) {
   return rows.map((w) => ({
     id: String(w.id_lista_espera),
     guestId: String(w.id_huesped),
@@ -399,36 +400,38 @@ function buildResourceList() {
   return [
     // M1
     ['habitaciones', 'habitaciones', paged('/m1/habitaciones', MAX_PAGES_M1)],
-    ['huespedes', 'huéspedes', paged('/m1/huespedes', MAX_PAGES_M1)],
-    ['reservas', 'reservas', paged('/m1/reservas', MAX_PAGES_M1)],
-    ['tarifas', 'tarifas', data('/m1/tarifas')],
-    ['listaEspera', 'lista de espera', paged('/m1/lista-espera', MAX_PAGES_M1)],
+    ['huespedes', 'huéspedes recientes', paged('/m1/huespedes', 1)],
+    // Solo lo operativo (en curso, confirmadas y pendientes); el historial completo se pagina en la pantalla de Reservas.
+    ['reservas', 'reservas operativas', paged('/m1/reservas?status=EN_CURSO,CONFIRMADA,PENDIENTE', MAX_PAGES_M1)],
+    ['tarifas', 'tarifas vigentes', data('/m1/tarifas?vigentes=true')],
+    ['listaEspera', 'lista de espera pendiente', paged('/m1/lista-espera?status=PENDIENTE', MAX_PAGES_M1)],
     ['tarifaDinamica', 'tarifa dinámica', data('/m1/tarifas/dinamica')],
     ['catalogos', 'catálogos de reservas', data('/m1/catalogos')],
     // M2
-    ['ordenesLimpieza', 'órdenes de limpieza', paged('/m2/ordenes-limpieza')],
-    ['incidencias', 'incidencias', paged('/m2/incidencias')],
-    ['ordenesTrabajo', 'órdenes de trabajo', paged('/m2/ordenes-trabajo')],
+    // Solo lo abierto (el historial se pagina en cada pantalla).
+    ['ordenesLimpieza', 'órdenes de limpieza abiertas', paged(`/m2/ordenes-limpieza?status=${encodeURIComponent('Pendiente,Asignada,En limpieza,Pendiente inspección')}`)],
+    ['incidencias', 'incidencias abiertas', paged(`/m2/incidencias?status=${encodeURIComponent('Abierta,En atención')}`)],
+    ['ordenesTrabajo', 'órdenes de trabajo abiertas', paged(`/m2/ordenes-trabajo?status=${encodeURIComponent('Pendiente,Asignada,En proceso,En espera')}`)],
     ['insumos', 'insumos de housekeeping', data('/m2/insumos')],
     ['activos', 'activos', data('/m2/activos')],
     ['preventivo', 'mantenimiento preventivo', data('/m2/preventivo')],
-    ['inspecciones', 'historial de inspecciones', data('/m2/inspecciones')],
     ['catalogosM2', 'catálogos de mantenimiento', data('/m2/catalogos')],
     // M3
     ['catalogo', 'catálogo de servicios', data('/m3/catalogo')],
-    ['comandas', 'comandas', paged('/m3/comandas')],
-    ['consumos', 'consumos', paged('/m3/consumos')],
+    ['comandas', 'comandas abiertas', paged(`/m3/comandas?status=${encodeURIComponent('pendiente,en preparación,lista')}`)],
+    ['consumos', 'consumos por confirmar', paged(`/m3/consumos?status=${encodeURIComponent('por confirmar')}`)],
     ['inventario', 'inventario', paged('/m3/inventario')],
-    ['ordenesCompra', 'órdenes de compra', paged('/m3/ordenes-compra')],
+    ['ordenesCompra', 'órdenes de compra abiertas', paged(`/m3/ordenes-compra?status=${encodeURIComponent('pendiente de aprobación,aprobada,enviada,parcialmente recibida')}`)],
     ['proveedores', 'proveedores', data('/m3/proveedores')],
     ['recetas', 'recetas', data('/m3/recetas')],
     ['requisiciones', 'requisiciones de almacén', data('/m3/requisiciones')],
     // M4
     ['cuentas', 'folios', paged('/m4/cuentas?status=ACTIVA')],
-    ['comprobantes', 'comprobantes', paged('/m4/comprobantes')],
-    ['turnos', 'turnos de caja', paged('/m4/turnos-caja')],
-    ['gastos', 'gastos', paged('/m4/gastos')],
-    ['cxc', 'cuentas por cobrar', paged('/m4/cuentas-por-cobrar')],
+    ['comprobantes', 'comprobantes recientes', paged('/m4/comprobantes', 1)],
+    ['reportes', 'resumen financiero', data('/m4/reportes/resumen')],
+    ['turnos', 'turno de caja abierto', paged('/m4/turnos-caja?status=ABIERTA', 1)],
+    ['gastos', 'gastos pendientes', paged('/m4/gastos?status=PENDIENTE', 1)],
+    ['cxc', 'cuentas por cobrar abiertas', paged('/m4/cuentas-por-cobrar?status=VIGENTE,VENCIDA')],
     // M5
     ['perfiles', 'perfiles de huésped', paged('/m5/perfiles')],
     ['campanas', 'campañas', paged('/m5/campanas')],
@@ -561,7 +564,6 @@ export async function loadERPState(options = {}) {
       insumos: list('insumos'),
       activos: list('activos'),
       preventivo: list('preventivo'),
-      inspecciones: list('inspecciones'),
     }),
     mapM3({
       catalogo: obj('catalogo'),
@@ -629,6 +631,7 @@ export async function loadERPState(options = {}) {
   state.folios = mapFolios(cuentas, folioDetailsCache);
 
   // ---- Transversales
+  state.financeSummary = mapFinanceSummary(obj('reportes'));
   state.notifications = mapNotifications(obj('resumen'));
   state.auditLog = mapAuditLog(list('bitacoras'));
 
@@ -636,4 +639,22 @@ export async function loadERPState(options = {}) {
   const source =
     errors.length === 0 ? 'postgresql_database' : attempted > 0 && errors.length >= attempted ? 'error' : 'partial';
   return { state, source, errors, truncated, forbidden };
+}
+
+const summaryCache = new Map();
+
+/** Resumen financiero de un rango (para el panel principal); se guarda por rango para no repetir la consulta. */
+export async function fetchFinanceSummary(from, to) {
+  const key = `${from}|${to}`;
+  const hit = summaryCache.get(key);
+  if (hit && Date.now() - hit.at < 30_000) return hit.data;
+  const res = await apiV1Request(`/m4/reportes/resumen?desde=${from}&hasta=${to}`);
+  const summary = mapFinanceSummary(res?.data);
+  if (summary) summaryCache.set(key, { at: Date.now(), data: summary });
+  return summary;
+}
+
+/** Descarta los resúmenes guardados (tras una escritura o al cambiar de sesión). */
+export function clearFinanceSummaryCache() {
+  summaryCache.clear();
 }

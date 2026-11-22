@@ -1,12 +1,15 @@
 <div class="stack-md">
   <div class="row-between">
-    <p class="text-xs text-slate-500">Tarifas por temporada con sincronización inmediata al tarifario base de habitaciones.</p>
+    <div data-ref="filters-slot"></div>
     <button type="button" class="btn btn-primary btn-sm hidden" data-ref="new-rate-btn">
       <span data-ref="plus-icon"></span>
       <span>Nueva tarifa</span>
     </button>
   </div>
-  <div class="grid-2" data-ref="grid"></div>
+  <div class="card">
+    <div data-ref="grid-wrap" class="p-4"></div>
+    <div data-ref="footer-slot"></div>
+  </div>
 </div>
 
 <template data-tpl="card-tarifa">

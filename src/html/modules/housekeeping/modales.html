@@ -42,38 +42,40 @@
     <form class="stack-md">
       <div class="grid-2">
         <div>
-          <label class="field-label">Habitación (opcional)</label>
+          <label class="field-label">Habitación</label>
           <select class="select-control" data-ref="roomId"></select>
         </div>
         <div>
-          <label class="field-label">Ubicación</label>
-          <input class="input-control" required data-ref="location" />
+          <label class="field-label">Equipo / activo</label>
+          <select class="select-control" data-ref="assetId"></select>
         </div>
         <div>
-          <label class="field-label">Categoría</label>
-          <select class="select-control" data-ref="category">
-            <option value="Plomería">Plomería</option>
-            <option value="Electricidad">Electricidad</option>
-            <option value="Climatización">Climatización</option>
-            <option value="Mobiliario">Mobiliario</option>
-            <option value="Equipos">Equipos</option>
-            <option value="Infraestructura">Infraestructura</option>
-          </select>
+          <label class="field-label">Ubicación</label>
+          <input class="input-control" readonly placeholder="Se completa al elegir habitación o equipo" data-ref="location" />
         </div>
         <div>
           <label class="field-label">Prioridad</label>
           <select class="select-control" data-ref="priority">
-            <option value="Urgente">Urgente</option>
-            <option value="Alta" selected>Alta</option>
-            <option value="Media">Media</option>
+            <option value="Alta">Alta</option>
+            <option value="Media" selected>Media</option>
             <option value="Baja">Baja</option>
+          </select>
+        </div>
+        <div>
+          <label class="field-label">Reportado por</label>
+          <select class="select-control" data-ref="origin">
+            <option value="Personal">Personal</option>
+            <option value="Supervisor">Supervisor</option>
+            <option value="Huésped">Huésped</option>
           </select>
         </div>
       </div>
       <div>
         <label class="field-label">Descripción detallada</label>
-        <textarea rows="3" required class="textarea-control" data-ref="description"></textarea>
+        <textarea rows="3" required maxlength="300" class="textarea-control" data-ref="description"></textarea>
+        <div class="text-11 text-slate-400 mt-1 text-right" data-ref="counter">0 / 300</div>
       </div>
+      <p class="text-11 text-slate-500">Indica una habitación, un equipo o ambos.</p>
       <div class="row-wrap justify-end pt-2">
         <button type="button" class="btn btn-outline-muted" data-ref="cancel-btn">Cancelar</button>
         <button type="submit" class="btn btn-primary">Registrar incidencia</button>

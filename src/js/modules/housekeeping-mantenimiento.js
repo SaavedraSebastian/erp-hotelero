@@ -25,14 +25,18 @@ import iaOperativaHtml from '../../html/modules/housekeeping/ia-operativa.html?r
 import { formatCurrency } from '../utils/formatters.js';
 import { getRoute, navigateToView } from '../core/router.js';
 import { erpStore } from '../core/store.js';
+import { bindPagedView } from '../components/paged-view.js';
+import { localPager, resetLocalPager } from '../components/pagination.js';
+import { getPagedList, setActivePagedList } from '../services/paged-list.js';
+import { mapCleaningRows, mapIncidentRows, mapInspectionRows, mapWorkOrderRows } from '../services/erp-mappers.js';
 import {
   AccessDeniedCard,
   ModuleAIAdvisor,
+  EmptyState,
   ModuleHeader,
   SearchInput,
   StatTile,
   StatusText,
-  SubmoduleBar,
   openModal,
 } from '../components/ui-components.js';
 
@@ -52,16 +56,16 @@ const VIEW_HTML = {
 };
 
 const M2_TABS = [
-  { id: 'estado_habitaciones', label: 'Estado Habitaciones', subtitle: 'Control físico de habitaciones sincronizado con Recepción.' },
-  { id: 'limpieza', label: 'Órdenes Limpieza', subtitle: 'Asignaciones por salida, estadía y limpieza profunda.' },
-  { id: 'inspeccion', label: 'Inspecciones', subtitle: 'Checklist de calidad para liberar habitaciones para Check-in.' },
-  { id: 'personal', label: 'Personal', subtitle: 'Disponibilidad, turno y balance de carga del equipo operativo.' },
-  { id: 'incidencias', label: 'Incidencias', subtitle: 'Reportes de averías, infraestructura y casos escalados desde CRM.' },
-  { id: 'mant_preventivo', label: 'Preventivo', subtitle: 'Calendario de revisiones periódicas para equipos críticos.' },
-  { id: 'mant_correctivo', label: 'Correctivo (OT)', subtitle: 'Órdenes de trabajo técnicas con control de costos operativos.' },
-  { id: 'activos', label: 'Activos y Equipos', subtitle: 'Catálogo de equipos, horas acumuladas y riesgo de falla estimado.' },
-  { id: 'insumos', label: 'Insumos Limpieza', subtitle: 'Stock operativo de piso y solicitudes enviadas a Almacén.' },
-  { id: 'ia_operativa', label: 'IA Operativa', subtitle: 'Asignación sugerida de limpieza, alertas predictivas y asesor IA.' },
+  { id: 'estado_habitaciones', label: 'Estado Habitaciones', subtitle: 'Estado físico de las habitaciones y su disponibilidad para la venta.' },
+  { id: 'limpieza', label: 'Órdenes Limpieza', subtitle: 'Órdenes de limpieza por salida, estadía y limpieza profunda.' },
+  { id: 'inspeccion', label: 'Inspecciones', subtitle: 'Inspección de calidad para liberar habitaciones.' },
+  { id: 'personal', label: 'Personal', subtitle: 'Personal operativo, turno y carga de trabajo.' },
+  { id: 'incidencias', label: 'Incidencias', subtitle: 'Reportes de averías e incidencias de infraestructura.' },
+  { id: 'mant_preventivo', label: 'Preventivo', subtitle: 'Calendario de mantenimiento preventivo por equipo.' },
+  { id: 'mant_correctivo', label: 'Correctivo (OT)', subtitle: 'Órdenes de trabajo de mantenimiento y sus costos.' },
+  { id: 'activos', label: 'Activos y Equipos', subtitle: 'Equipos e instalaciones, horas de uso y riesgo de falla.' },
+  { id: 'insumos', label: 'Insumos Limpieza', subtitle: 'Stock de insumos de limpieza y reposición desde Almacén.' },
+  { id: 'ia_operativa', label: 'IA Operativa', subtitle: 'Sugerencias de asignación y alertas operativas.' },
 ];
 
 const m2Ui = {
@@ -73,7 +77,6 @@ const m2Ui = {
 export function renderHousekeepingModule() {
   const root = parseHtmlTemplate(moduleShellHtml);
   const headerSlot = getRef(root, 'header-slot');
-  const tabsSlot = getRef(root, 'tabs-slot');
   const bodySlot = getRef(root, 'body-slot');
 
   function getStatusVariant(status) {
@@ -118,41 +121,54 @@ export function renderHousekeepingModule() {
 
   function openIncidentModal() {
     const state = erpStore.state;
-    const maintStaff = state.staff.filter((s) => s.area === 'Mantenimiento');
     openModal({
-      title: 'Reportar Incidencia de Mantenimiento',
+      title: 'Reportar incidencia',
+      subtitle: 'Registra una avería o problema en una habitación o equipo para que Mantenimiento lo atienda.',
       renderBody: (close) => {
         const form = cloneModal('modal-incidencia');
         const roomSel = getRef(form, 'roomId');
+        const assetSel = getRef(form, 'assetId');
         const location = getRef(form, 'location');
-        const category = getRef(form, 'category');
         const priority = getRef(form, 'priority');
+        const origin = getRef(form, 'origin');
         const desc = getRef(form, 'description');
+        const counter = getRef(form, 'counter');
 
-        mount(
-          roomSel,
-          h('option', { value: '' }, 'Área común / Ninguna'),
-          state.rooms.map((rm) => h('option', { value: rm.id }, `Hab. ${rm.number}`))
-        );
-        location.value = 'Habitación 203';
-        roomSel.addEventListener('change', (e) => {
-          const rm = state.rooms.find((r) => r.id === e.target.value);
-          if (rm) location.value = `Habitación ${rm.number}`;
+        mount(roomSel, h('option', { value: '' }, '— Ninguna —'), state.rooms.map((rm) => h('option', { value: rm.id }, `Hab. ${rm.number} · ${rm.type}`)));
+        mount(assetSel, h('option', { value: '' }, '— Ninguno —'), state.assets.map((a) => h('option', { value: a.id }, `${a.name}${a.roomNumber ? ` · ${/^\d/.test(a.roomNumber) ? `Hab. ${a.roomNumber}` : a.roomNumber}` : ''}`)));
+
+        const syncLocation = () => {
+          const rm = state.rooms.find((r) => r.id === roomSel.value);
+          const asset = state.assets.find((a) => a.id === assetSel.value);
+          location.value = rm ? `Habitación ${rm.number}` : asset ? (/^\d/.test(asset.roomNumber || '') ? `Habitación ${asset.roomNumber}` : asset.roomNumber || '') : '';
+        };
+        roomSel.addEventListener('change', syncLocation);
+        assetSel.addEventListener('change', () => {
+          // Si el equipo está en una habitación, la selecciona para mantener la incidencia ubicada.
+          const asset = state.assets.find((a) => a.id === assetSel.value);
+          if (asset?.roomId && !roomSel.value) roomSel.value = asset.roomId;
+          syncLocation();
+        });
+        desc.addEventListener('input', () => {
+          counter.textContent = `${desc.value.length} / 300`;
         });
 
         getRef(form, 'cancel-btn')?.addEventListener('click', close);
-        form.addEventListener('submit', (e) => {
+        form.addEventListener('submit', async (e) => {
           e.preventDefault();
           if (!desc.value.trim()) return;
-          erpStore.createIncident({
+          if (!roomSel.value && !assetSel.value) {
+            erpStore.pushToast({ title: 'Falta la ubicación', detail: 'Elige una habitación, un equipo o ambos.', type: 'warning' });
+            return;
+          }
+          const res = await erpStore.createIncident({
             roomId: roomSel.value || undefined,
-            location: location.value,
-            category: category.value,
+            assetId: assetSel.value || undefined,
             priority: priority.value,
-            assignedStaffId: maintStaff[0]?.id || undefined,
+            origin: origin.value,
             description: desc.value,
           });
-          close();
+          if (res?.ok) close();
         });
         return form;
       },
@@ -298,6 +314,7 @@ export function renderHousekeepingModule() {
   }
 
   function renderContent() {
+    setActivePagedList(null); // cada pantalla paginada se vuelve a enlazar al dibujarse
     const state = erpStore.state;
     const currentUser = erpStore.currentUser;
     const currentPermissions = erpStore.currentPermissions;
@@ -308,6 +325,7 @@ export function renderHousekeepingModule() {
     const defaultTab = erpStore.getDefaultTab('m2') || visibleTabs[0]?.id || 'estado_habitaciones';
     const requestedTab = route.tab || defaultTab;
     const activeTab = visibleTabs.some((t) => t.id === requestedTab) ? requestedTab : defaultTab;
+    const activeMeta = M2_TABS.find((t) => t.id === activeTab);
     const isTabDenied = Boolean(route.tab && !erpStore.canViewTab('m2', route.tab));
     const canEditCurrentTab = erpStore.canEditTab('m2', activeTab);
     const onlyMine = Boolean(currentPermissions?.onlyAssignedTasks);
@@ -380,24 +398,24 @@ export function renderHousekeepingModule() {
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.limpieza);
       tabBody = view;
       if (canEditCurrentTab) {
-        setVisible(tabBody, 'actions-th', true);
         if (!onlyMine) {
-          setVisible(tabBody, 'top-bar', true);
           setVisible(tabBody, 'new-btn', true);
           mountRef(tabBody, 'plus-icon', icon('plus', 'w-3.5'));
           getRef(tabBody, 'new-btn')?.addEventListener('click', openCleaningModal);
         }
       }
-      mountRef(
-        tabBody,
-        'tbody',
-        scopedCleaningOrders.map((ord) => {
-          const stf = staffById.get(ord.assignedStaffId);
-          const tr = clone('fila-limpieza');
+      const renderCleaningTable = (rows) => {
+        const tbl = clone('tabla-limpieza');
+        if (canEditCurrentTab) setVisible(tbl, 'actions-th', true);
+        mountRef(
+          tbl,
+          'tbody',
+          rows.map((ord) => {
+                    const tr = clone('fila-limpieza');
           setText(tr, 'room', `Hab. ${ord.roomNumber}`);
           setText(tr, 'type', ord.type);
           mountRef(tr, 'priority', StatusText({ label: ord.priority, variant: getStatusVariant(ord.priority) }));
-          setText(tr, 'staff', stf?.name || '—');
+          setText(tr, 'staff', ord.assignedStaffName || staffById.get(ord.assignedStaffId)?.name || '—');
           if (ord.sourceFlow) {
             setVisible(tr, 'origin', true);
             setText(tr, 'origin', ord.sourceFlow.replace(/^Flujo\s+[A-F]:\s*/i, ''));
@@ -417,7 +435,39 @@ export function renderHousekeepingModule() {
           }
           return tr;
         })
-      );
+        );
+        return tbl;
+      };
+      if (onlyMine) {
+        // Personal con vista restringida: solo sus tareas abiertas, que ya están cargadas.
+        const lp = localPager('m2.limpieza', scopedCleaningOrders, renderContent, 20);
+        mountRef(tabBody, 'table-wrap', scopedCleaningOrders.length ? renderCleaningTable(lp.slice) : EmptyState({ iconName: 'sparkles', title: 'Sin tareas asignadas', description: 'No tienes órdenes de limpieza abiertas.' }));
+        mountRef(tabBody, 'footer-slot', lp.footer);
+      } else {
+        const cleanList = getPagedList('m2.limpieza', { path: '/m2/ordenes-limpieza', map: mapCleaningRows, pageSize: 20 });
+        bindPagedView({
+          key: 'm2.limpieza',
+          list: cleanList,
+          filtersSlot: getRef(tabBody, 'filters-slot'),
+          bodySlot: getRef(tabBody, 'table-wrap'),
+          footerSlot: getRef(tabBody, 'footer-slot'),
+          filters: {
+            searchPlaceholder: 'Buscar habitación, tipo o responsable…',
+            dates: true,
+            statusOptions: [
+              { value: '', label: 'Todos los estados' },
+              { value: 'Pendiente,Asignada', label: 'Pendiente' },
+              { value: 'En limpieza', label: 'En proceso' },
+              { value: 'Pendiente inspección', label: 'Pendiente de inspección' },
+              { value: 'Cerrada', label: 'Cerrada' },
+              { value: 'Anulada', label: 'Anulada' },
+            ],
+          },
+          renderBody: renderCleaningTable,
+          empty: { iconName: 'sparkles', title: 'Sin órdenes de limpieza', description: 'Aún no hay órdenes registradas.' },
+          noMatch: { iconName: 'sparkles', title: 'Sin órdenes coincidentes', description: 'Prueba con otro estado, fechas o búsqueda.' },
+        });
+      }
     } else if (activeTab === 'inspeccion') {
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.inspeccion);
       tabBody = view;
@@ -480,18 +530,36 @@ export function renderHousekeepingModule() {
         });
       }
 
-      mountRef(
-        tabBody,
-        'history-list',
-        state.inspections.slice(0, 8).map((ins) => {
+      const renderInspectionRows = (rows) =>
+        h('div', { className: 'divide-y' },
+          ...rows.map((ins) => {
           const row = clone('fila-historial-inspeccion');
           setText(row, 'room', `Hab. ${ins.roomNumber}`);
           setText(row, 'obs', ins.observations || 'Inspección conforme.');
           setText(row, 'meta', `Inspector: ${ins.inspector} · ${ins.date}`);
           mountRef(row, 'result', StatusText({ label: ins.result, variant: ins.result === 'Aprobada' ? 'success' : 'danger' }));
           return row;
-        })
-      );
+        }));
+      const inspList = getPagedList('m2.inspecciones', { path: '/m2/inspecciones', map: mapInspectionRows, pageSize: 10 });
+      bindPagedView({
+        key: 'm2.inspecciones',
+        list: inspList,
+        filtersSlot: getRef(tabBody, 'history-filters'),
+        bodySlot: getRef(tabBody, 'history-list'),
+        footerSlot: getRef(tabBody, 'history-footer'),
+        filters: {
+          searchPlaceholder: 'Buscar habitación o supervisor…',
+          dates: true,
+          statusOptions: [
+            { value: '', label: 'Todos los resultados' },
+            { value: 'Conforme', label: 'Aprobadas' },
+            { value: 'No conforme', label: 'Rechazadas' },
+          ],
+        },
+        renderBody: renderInspectionRows,
+        empty: { iconName: 'clipboardCheck', title: 'Sin inspecciones', description: 'Aún no hay inspecciones registradas.' },
+        noMatch: { iconName: 'clipboardCheck', title: 'Sin inspecciones coincidentes', description: 'Prueba con otro resultado, fechas o búsqueda.' },
+      });
     } else if (activeTab === 'personal') {
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.personal);
       tabBody = view;
@@ -516,16 +584,17 @@ export function renderHousekeepingModule() {
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.incidencias);
       tabBody = view;
       if (canEditCurrentTab) {
-        setVisible(tabBody, 'top-bar', true);
         setVisible(tabBody, 'new-btn', true);
-        setVisible(tabBody, 'actions-th', true);
         mountRef(tabBody, 'plus-icon', icon('plus', 'w-3.5'));
         getRef(tabBody, 'new-btn')?.addEventListener('click', openIncidentModal);
       }
-      mountRef(
-        tabBody,
-        'tbody',
-        state.incidents.map((inc) => {
+      const renderIncidentTable = (rows) => {
+        const tbl = clone('tabla-incidencias');
+        if (canEditCurrentTab) setVisible(tbl, 'actions-th', true);
+        mountRef(
+          tbl,
+          'tbody',
+          rows.map((inc) => {
           const tr = clone('fila-incidencia');
           setText(tr, 'code', inc.code);
           setText(tr, 'location', inc.location);
@@ -544,14 +613,38 @@ export function renderHousekeepingModule() {
                 ? h('button', {
                     type: 'button',
                     className: 'btn btn-teal btn-xs',
-                    onClick: () => erpStore.createWorkOrderFromIncident(inc.id, inc.assignedStaffId || maintStaff[0]?.id || 'stf-4', 180, inc.description),
+                    onClick: () => erpStore.createWorkOrderFromIncident(inc.id, inc.assignedStaffId || maintStaff[0]?.id || null, 0, inc.description),
                   }, 'Generar OT')
                 : h('span', { className: 'text-11 text-slate-400' }, inc.status)
             );
           }
           return tr;
         })
-      );
+        );
+        return tbl;
+      };
+      const incList = getPagedList('m2.incidencias', { path: '/m2/incidencias', map: mapIncidentRows, pageSize: 20 });
+      bindPagedView({
+        key: 'm2.incidencias',
+        list: incList,
+        filtersSlot: getRef(tabBody, 'filters-slot'),
+        bodySlot: getRef(tabBody, 'table-wrap'),
+        footerSlot: getRef(tabBody, 'footer-slot'),
+        filters: {
+          searchPlaceholder: 'Buscar habitación, equipo o descripción…',
+          dates: true,
+          statusOptions: [
+            { value: '', label: 'Todos los estados' },
+            { value: 'Abierta', label: 'Abierta' },
+            { value: 'En atención', label: 'En reparación' },
+            { value: 'Cerrada', label: 'Resuelta' },
+            { value: 'Anulada', label: 'Anulada' },
+          ],
+        },
+        renderBody: renderIncidentTable,
+        empty: { iconName: 'wrench', title: 'Sin incidencias', description: 'No hay incidencias reportadas.' },
+        noMatch: { iconName: 'wrench', title: 'Sin incidencias coincidentes', description: 'Prueba con otro estado, fechas o búsqueda.' },
+      });
     } else if (activeTab === 'mant_preventivo') {
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.mant_preventivo);
       tabBody = view;
@@ -561,10 +654,12 @@ export function renderHousekeepingModule() {
         mountRef(tabBody, 'plus-icon', icon('plus', 'w-3.5'));
         getRef(tabBody, 'new-btn')?.addEventListener('click', () => openPreventiveModal(null));
       }
+      const prevPager = localPager('m2.preventivo', state.preventiveSchedules, renderContent, 20);
+      mountRef(tabBody, 'footer-slot', prevPager.footer);
       mountRef(
         tabBody,
         'tbody',
-        state.preventiveSchedules.map((p) => {
+        prevPager.slice.map((p) => {
           const stf = staffById.get(p.assignedStaffId);
           const tr = clone('fila-preventivo');
           setText(tr, 'asset', p.assetName);
@@ -589,24 +684,50 @@ export function renderHousekeepingModule() {
     } else if (activeTab === 'mant_correctivo') {
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.mant_correctivo);
       tabBody = view;
-      mountRef(
-        tabBody,
-        'grid',
-        scopedWorkOrders.map((wo) => {
-          const stf = staffById.get(wo.assignedStaffId);
-          const card = clone('card-ot');
+      const renderWorkOrderCards = (rows) =>
+        h('div', { className: 'grid-2' },
+          ...rows.map((wo) => {
+                    const card = clone('card-ot');
           setText(card, 'code-location', `${wo.code} · ${wo.location}`);
           setText(card, 'desc', wo.description);
           mountRef(card, 'status', StatusText({ label: wo.status, variant: getStatusVariant(wo.status) }));
-          setText(card, 'staff', stf?.name || '—');
+          setText(card, 'staff', wo.assignedStaffName || staffById.get(wo.assignedStaffId)?.name || '—');
           setText(card, 'cost', formatCurrency(wo.estimatedCost));
           if (wo.status !== 'Completada' && canEditCurrentTab) {
             setVisible(card, 'complete-btn', true);
             getRef(card, 'complete-btn')?.addEventListener('click', () => openResolveWOModal(wo));
           }
           return card;
-        })
-      );
+        }));
+      if (onlyMine) {
+        const lp = localPager('m2.ot', scopedWorkOrders, renderContent, 20);
+        mountRef(tabBody, 'grid-wrap', scopedWorkOrders.length ? renderWorkOrderCards(lp.slice) : EmptyState({ iconName: 'wrench', title: 'Sin órdenes asignadas', description: 'No tienes órdenes de trabajo abiertas.' }));
+        mountRef(tabBody, 'footer-slot', lp.footer);
+      } else {
+        const otList = getPagedList('m2.ot', { path: '/m2/ordenes-trabajo', map: mapWorkOrderRows, pageSize: 20 });
+        bindPagedView({
+          key: 'm2.ot',
+          list: otList,
+          filtersSlot: getRef(tabBody, 'filters-slot'),
+          bodySlot: getRef(tabBody, 'grid-wrap'),
+          footerSlot: getRef(tabBody, 'footer-slot'),
+          filters: {
+            searchPlaceholder: 'Buscar equipo, tarea, técnico o número…',
+            dates: true,
+            statusOptions: [
+              { value: '', label: 'Todos los estados' },
+              { value: 'Pendiente,Asignada', label: 'Pendiente' },
+              { value: 'En proceso', label: 'En ejecución' },
+              { value: 'En espera', label: 'En espera' },
+              { value: 'Cerrada', label: 'Completada' },
+              { value: 'Anulada', label: 'Anulada' },
+            ],
+          },
+          renderBody: renderWorkOrderCards,
+          empty: { iconName: 'wrench', title: 'Sin órdenes de trabajo', description: 'Aún no hay órdenes registradas.' },
+          noMatch: { iconName: 'wrench', title: 'Sin órdenes coincidentes', description: 'Prueba con otro estado, fechas o búsqueda.' },
+        });
+      }
     } else if (activeTab === 'activos') {
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.activos);
       tabBody = view;
@@ -627,10 +748,12 @@ export function renderHousekeepingModule() {
             (a.brand || '').toLowerCase().includes(q) ||
             String(a.roomNumber || '').toLowerCase().includes(q)
         );
+        const lp = localPager('m2.activos', filtered, renderAssetRows, 20);
+        mountRef(tabBody, 'footer-slot', lp.footer);
         mountRef(
           tabBody,
           'tbody',
-          filtered.map((a) => {
+          lp.slice.map((a) => {
             const tr = clone('fila-activo');
             setText(tr, 'code', a.code);
             setText(tr, 'name', a.name);
@@ -656,6 +779,7 @@ export function renderHousekeepingModule() {
         placeholder: 'Buscar equipo, marca o habitación...',
         onChange: (v) => {
           m2Ui.assetSearch = v;
+          resetLocalPager('m2.activos');
           renderAssetRows();
         },
       }));
@@ -785,32 +909,12 @@ export function renderHousekeepingModule() {
       );
     }
 
-    const tabCounts = {
-      estado_habitaciones: state.rooms.length,
-      limpieza: scopedCleaningOrders.filter((c) => c.status !== 'Inspeccionada').length,
-      inspeccion: state.inspections.length,
-      personal: state.staff.length,
-      incidencias: state.incidents.filter((i) => i.status !== 'Resuelta').length,
-      mant_preventivo: state.preventiveSchedules.length,
-      mant_correctivo: scopedWorkOrders.filter((w) => w.status !== 'Completada').length,
-      activos: state.assets.length,
-      insumos: state.hkSupplies.length,
-    };
-
-    const barTabs = visibleTabs.map((t) => ({
-      id: t.id,
-      label: t.label,
-      ...(tabCounts[t.id] !== undefined ? { count: tabCounts[t.id] } : {}),
-    }));
-
     mount(
       headerSlot,
       ModuleHeader({
-        moduleNumber: canEditCurrentTab
-          ? 'Módulo 02 · Operaciones de Planta'
-          : 'Módulo 02 · Operaciones de Planta · Modo consulta (solo lectura)',
-        title: 'Housekeeping y Mantenimiento',
-        subtitle: 'Control físico de habitaciones sincronizado con Recepción, inspecciones con checklist, incidencias, órdenes de trabajo y reposición con Almacén.',
+        moduleNumber: canEditCurrentTab ? 'Housekeeping y Mantenimiento' : 'Housekeeping y Mantenimiento · Solo lectura',
+        title: activeMeta?.label ?? 'Housekeeping y Mantenimiento',
+        subtitle: activeMeta?.subtitle ?? '',
         actions: canEditCurrentTab && !onlyMine
           ? h('div', { className: 'row-wrap' },
               erpStore.canEditTab('m2', 'incidencias')
@@ -822,16 +926,6 @@ export function renderHousekeepingModule() {
             )
           : null,
       })
-    );
-    mount(
-      tabsSlot,
-      !isTabDenied && barTabs.length > 0
-        ? SubmoduleBar({
-            tabs: barTabs,
-            activeTab,
-            onChange: (nextTab) => navigateToView('/housekeeping', nextTab),
-          })
-        : null
     );
     mount(bodySlot, tabBody);
   }

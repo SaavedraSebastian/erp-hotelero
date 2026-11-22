@@ -17,7 +17,9 @@ import {
   fetchEstablishmentConfig,
   getPersistenceStatus,
   loadERPState,
+  clearFinanceSummaryCache,
 } from '../services/data-adapter.js';
+import { reloadActivePagedList, resetPagedLists } from '../services/paged-list.js';
 import { createWriteActions } from '../services/erp-actions.js';
 import { createEmptyERPState } from '../data/empty-state.js';
 import { nowStamp, uid } from '../utils/formatters.js';
@@ -180,10 +182,24 @@ export const erpStore = {
    * Lee de PostgreSQL (vía /api/v1) todo lo que tiene API; el resto queda vacío.
    * Con `keys` solo se vuelven a pedir esos recursos (p. ej. tras una escritura).
    */
+  /** Incorpora (o completa) un huésped elegido en un buscador para que las acciones lo reconozcan. */
+  ensureGuest(guest) {
+    const st = storeData.state;
+    if (!st || !guest?.id) return;
+    const cur = st.guests.find((g) => g.id === guest.id);
+    if (!cur) st.guests.push({ segment: 'Sin segmentar', loyaltyTier: 'Sin nivel', loyaltyPoints: 0, totalStays: 0, totalSpent: 0, preferences: [], ...guest });
+    else Object.assign(cur, Object.fromEntries(Object.entries(guest).filter(([, v]) => v !== undefined && v !== '')));
+  },
+
   async refreshState(keys) {
     const { state, source, errors, truncated, forbidden } = await loadERPState(keys ? { keys } : undefined);
     storeData.state = state;
     storeData.loadInfo = { source, errors, truncated, forbidden };
+    if (keys?.length) {
+      clearFinanceSummaryCache();
+      reloadActivePagedList();
+    } // tras guardar: vuelve a leer la lista que está a la vista
+    else resetPagedLists(); // carga completa: descarta lo paginado anterior
     if (source === 'postgresql_database' || source === 'partial') {
       storeData.lastSyncedAt = new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
     }
@@ -196,10 +212,12 @@ export const erpStore = {
         type: 'error',
       });
     }
-    if (truncated.length > 0) {
+    // Solo en la carga completa; las reservas se amplían con "Cargar más" en su pantalla.
+    const notable = truncated.filter((t) => t !== 'reservas');
+    if (!keys && notable.length > 0) {
       erpStore.pushToast({
         title: 'Datos limitados',
-        detail: `Se cargaron solo los registros más recientes de: ${truncated.join(', ')}.`,
+        detail: `Se cargaron solo los registros más recientes de: ${notable.join(', ')}.`,
         type: 'info',
       });
     }

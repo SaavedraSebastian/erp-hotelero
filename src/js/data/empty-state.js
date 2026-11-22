@@ -22,6 +22,7 @@ export function createEmptyERPState() {
     reservations: [],
     ratePlans: [],
     waitlist: [],
+    financeSummary: null,
     dynamicPricing: { horizonDays: 7, rule: [], types: [] },
 
     // M2 · Housekeeping y Mantenimiento

@@ -25,6 +25,9 @@ import iaFinancieraHtml from '../../html/modules/finanzas/ia-financiera.html?raw
 import { formatCurrency } from '../utils/formatters.js';
 import { getRoute, navigateToView } from '../core/router.js';
 import { erpStore } from '../core/store.js';
+import { bindPagedContainer } from '../components/paged-view.js';
+import { getPagedList, setActivePagedList } from '../services/paged-list.js';
+import { mapExpenseRows, mapInvoiceRows, mapReceivableRows } from '../services/erp-mappers.js';
 import { TODAY } from '../data/empty-state.js';
 import {
   AccessDeniedCard,
@@ -33,7 +36,6 @@ import {
   ModuleHeader,
   StatTile,
   StatusText,
-  SubmoduleBar,
   openModal,
 } from '../components/ui-components.js';
 import { renderAreaComparisonChart, renderGroupedBarChart } from '../components/charts.js';
@@ -54,16 +56,16 @@ const VIEW_HTML = {
 };
 
 const M4_TABS = [
-  { id: 'folios', label: 'Cuenta del Huésped' },
-  { id: 'facturacion', label: 'Facturación' },
-  { id: 'pagos', label: 'Pagos' },
-  { id: 'cxc', label: 'Cuentas por Cobrar' },
-  { id: 'caja', label: 'Caja' },
-  { id: 'gastos', label: 'Gastos' },
-  { id: 'costos', label: 'Costos' },
-  { id: 'reportes', label: 'Reportes' },
-  { id: 'sunat', label: 'SUNAT' },
-  { id: 'ia_financiera', label: 'IA Financiera' },
+  { id: 'folios', label: 'Cuenta del Huésped', subtitle: 'Cuentas abiertas de huéspedes: cargos, pagos y saldo.' },
+  { id: 'facturacion', label: 'Facturación', subtitle: 'Comprobantes de pago emitidos y su estado.' },
+  { id: 'pagos', label: 'Pagos', subtitle: 'Cobros registrados por medio de pago.' },
+  { id: 'cxc', label: 'Cuentas por Cobrar', subtitle: 'Cuentas por cobrar, vencimientos y cobranza.' },
+  { id: 'caja', label: 'Caja', subtitle: 'Turnos de caja, movimientos y arqueo.' },
+  { id: 'gastos', label: 'Gastos', subtitle: 'Gastos operativos por centro de costo.' },
+  { id: 'costos', label: 'Costos', subtitle: 'Ingresos y costos por área.' },
+  { id: 'reportes', label: 'Reportes', subtitle: 'Ingresos y egresos por período.' },
+  { id: 'sunat', label: 'SUNAT', subtitle: 'Comprobantes electrónicos y borrador del XML.' },
+  { id: 'ia_financiera', label: 'IA Financiera', subtitle: 'Análisis y alertas financieras.' },
 ];
 
 const m4Ui = {
@@ -83,7 +85,6 @@ const m4Ui = {
 export function renderFinanzasModule() {
   const root = parseHtmlTemplate(moduleShellHtml);
   const headerSlot = getRef(root, 'header-slot');
-  const tabsSlot = getRef(root, 'tabs-slot');
   const bodySlot = getRef(root, 'body-slot');
 
   function getStatusVariant(status) {
@@ -245,6 +246,7 @@ export function renderFinanzasModule() {
   }
 
   function renderContent() {
+    setActivePagedList(null); // cada pantalla paginada se vuelve a enlazar al dibujarse
     const state = erpStore.state;
     const currentUser = erpStore.currentUser;
     if (!state || !currentUser) return;
@@ -255,6 +257,7 @@ export function renderFinanzasModule() {
     const defaultTab = erpStore.getDefaultTab('m4') || visibleTabs[0]?.id || 'folios';
     const requestedTab = route.tab || defaultTab;
     const activeTab = visibleTabs.some((t) => t.id === requestedTab) ? requestedTab : defaultTab;
+    const activeMeta = M4_TABS.find((t) => t.id === activeTab);
     const isTabDenied = Boolean(route.tab && !erpStore.canViewTab('m4', route.tab));
     const canEditCurrentTab = erpStore.canEditTab('m4', activeTab);
 
@@ -262,10 +265,12 @@ export function renderFinanzasModule() {
     const selectedFolio = state.folios.find((f) => f.id === m4Ui.selectedFolioId) || state.folios[0];
     const activeCashShift = state.cashShifts.find((c) => c.status === 'Abierta');
 
-    const totalBilled = state.folios.reduce((s, f) => s + f.totalCharges, 0);
-    const totalCollected = state.folios.reduce((s, f) => s + f.totalPayments, 0);
-    const totalPending = state.folios.reduce((s, f) => s + f.balance, 0) + state.receivables.reduce((s, r) => s + r.pendingAmount, 0);
-    const totalExpenses = state.expenses.reduce((s, e) => s + e.amount, 0);
+    // Totales de los últimos 30 días, calculados en la base de datos.
+    const fin = state.financeSummary;
+    const totalBilled = fin?.billed ?? 0;
+    const totalCollected = fin?.collected ?? 0;
+    const totalPending = fin?.receivable ?? 0;
+    const totalExpenses = fin?.expenses ?? 0;
 
     let tabBody = null;
 
@@ -376,10 +381,10 @@ export function renderFinanzasModule() {
         mountRef(tabBody, 'issue-icon', icon('plus', 'w-3.5'));
         getRef(tabBody, 'issue-btn').addEventListener('click', openIssueInvoiceModal);
       }
-      mountRef(
-        tabBody,
-        'tbody',
-        state.invoices.map((inv) => {
+      const renderInvoiceRows = (rows) => {
+        const frag = document.createDocumentFragment();
+        for (const inv of rows) {
+          frag.appendChild((() => {
           const row = clone('fila-comprobante');
           setText(row, 'doc-title', `${inv.type} ${inv.series}-${inv.number}`);
           setText(row, 'issued-at', inv.issuedAt);
@@ -392,7 +397,7 @@ export function renderFinanzasModule() {
           mountRef(row, 'preview-icon', icon('printer', 'w-3.5'));
           getRef(row, 'preview-btn').addEventListener('click', () => openPreviewInvoiceModal(inv));
 
-          const showVoid = canEditCurrentTab && inv.status !== 'Anulada';
+          const showVoid = canEditCurrentTab && !['Anulado', 'Rechazado'].includes(inv.status);
           setVisible(row, 'void-btn', showVoid);
           if (showVoid) {
             getRef(row, 'void-btn').addEventListener('click', () => {
@@ -402,8 +407,29 @@ export function renderFinanzasModule() {
             });
           }
           return row;
-        })
-      );
+        })());
+        }
+        return frag;
+      };
+      bindPagedContainer({
+        container: getRef(tabBody, 'tbody'),
+        key: 'm4.comprobantes',
+        list: getPagedList('m4.comprobantes', { path: '/m4/comprobantes', map: mapInvoiceRows, pageSize: 20 }),
+        filters: {
+          searchPlaceholder: 'Buscar serie-número, cliente o documento…',
+          dates: true,
+          statusOptions: [
+            { value: '', label: 'Todos los estados' },
+            { value: 'ACEPTADO', label: 'Aceptado' },
+            { value: 'ENVIADO,FIRMADO', label: 'Enviado / firmado' },
+            { value: 'RECHAZADO', label: 'Rechazado' },
+            { value: 'ANULADO', label: 'Anulado' },
+          ],
+        },
+        renderBody: renderInvoiceRows,
+        empty: { iconName: 'fileText', title: 'Sin comprobantes', description: 'Aún no se han emitido comprobantes.' },
+        noMatch: { iconName: 'fileText', title: 'Sin comprobantes coincidentes', description: 'Prueba con otro estado, fechas o búsqueda.' },
+      });
     } else if (activeTab === 'pagos') {
       const openPaymentFolios = state.folios.filter((f) => f.balance > 0.01);
       if (!m4Ui.payAmount && selectedFolio) m4Ui.payAmount = String(selectedFolio.balance || '');
@@ -474,10 +500,10 @@ export function renderFinanzasModule() {
     } else if (activeTab === 'cxc') {
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.cxc);
       tabBody = view;
-      mountRef(
-        tabBody,
-        'tbody',
-        state.receivables.map((ar) => {
+      const renderReceivableRows = (rows) => {
+        const frag = document.createDocumentFragment();
+        for (const ar of rows) {
+          frag.appendChild((() => {
           const row = clone('fila-cxc');
           setText(row, 'client', ar.clientName);
           setText(row, 'doc', ar.documentRef);
@@ -497,8 +523,27 @@ export function renderFinanzasModule() {
             );
           }
           return row;
-        })
-      );
+        })());
+        }
+        return frag;
+      };
+      bindPagedContainer({
+        container: getRef(tabBody, 'tbody'),
+        key: 'm4.cxc',
+        list: getPagedList('m4.cxc', { path: '/m4/cuentas-por-cobrar', map: mapReceivableRows, pageSize: 20 }),
+        filters: {
+          searchPlaceholder: 'Buscar cliente o documento…',
+          statusOptions: [
+            { value: '', label: 'Todas' },
+            { value: 'VIGENTE,VENCIDA', label: 'Pendientes' },
+            { value: 'VENCIDA', label: 'Vencidas' },
+            { value: 'PAGADA', label: 'Pagadas' },
+          ],
+        },
+        renderBody: renderReceivableRows,
+        empty: { iconName: 'wallet', title: 'Sin cuentas por cobrar', description: 'No hay cuentas por cobrar registradas.' },
+        noMatch: { iconName: 'wallet', title: 'Sin cuentas coincidentes', description: 'Prueba con otro estado o búsqueda.' },
+      });
     } else if (activeTab === 'caja') {
       const { root: cajaWrapper, clone } = loadViewTemplate(VIEW_HTML.caja);
       tabBody = cajaWrapper;
@@ -585,10 +630,10 @@ export function renderFinanzasModule() {
         mountRef(tabBody, 'new-icon', icon('plus', 'w-3.5'));
         getRef(tabBody, 'new-btn').addEventListener('click', openExpenseModal);
       }
-      mountRef(
-        tabBody,
-        'tbody',
-        state.expenses.map((ex) => {
+      const renderExpenseRows = (rows) => {
+        const frag = document.createDocumentFragment();
+        for (const ex of rows) {
+          frag.appendChild((() => {
           const row = clone('fila-gasto');
           setText(row, 'date', ex.date);
           setText(row, 'doc-ref', ex.documentRef || '—');
@@ -599,28 +644,32 @@ export function renderFinanzasModule() {
           setText(row, 'amount', formatCurrency(ex.amount));
           mountRef(row, 'status', StatusText({ label: ex.status, variant: getStatusVariant(ex.status) }));
           return row;
-        })
-      );
+        })());
+        }
+        return frag;
+      };
+      bindPagedContainer({
+        container: getRef(tabBody, 'tbody'),
+        key: 'm4.gastos',
+        list: getPagedList('m4.gastos', { path: '/m4/gastos', map: mapExpenseRows, pageSize: 20 }),
+        filters: {
+          searchPlaceholder: 'Buscar concepto, proveedor o centro de costo…',
+          dates: true,
+          statusOptions: [
+            { value: '', label: 'Todos los estados' },
+            { value: 'PENDIENTE', label: 'Pendiente' },
+            { value: 'APROBADO', label: 'Aprobado' },
+            { value: 'RECHAZADO', label: 'Rechazado' },
+          ],
+        },
+        renderBody: renderExpenseRows,
+        empty: { iconName: 'receipt', title: 'Sin gastos', description: 'Aún no hay gastos registrados.' },
+        noMatch: { iconName: 'receipt', title: 'Sin gastos coincidentes', description: 'Prueba con otro estado, fechas o búsqueda.' },
+      });
     } else if (activeTab === 'costos') {
-      const roomIncome = state.folios.reduce(
-        (s, f) => s + f.charges.filter((c) => c.category === 'Alojamiento').reduce((a, b) => a + b.amount, 0),
-        0
-      );
-      const fbIncome = state.folios.reduce(
-        (s, f) => s + f.charges.filter((c) => ['Restaurante', 'Minibar', 'Room Service'].includes(c.category)).reduce((a, b) => a + b.amount, 0),
-        0
-      );
-      const expenseByCenter = (center) =>
-        state.expenses.filter((e) => e.costCenter === center).reduce((s, e) => s + e.amount, 0);
-
-      const costCenters = [
-        { area: 'Alojamiento', ingresos: roomIncome, costos: expenseByCenter('Alojamiento') },
-        { area: 'Alimentos y Bebidas', ingresos: fbIncome, costos: expenseByCenter('Alimentos y Bebidas') },
-        { area: 'Housekeeping', ingresos: 0, costos: expenseByCenter('Housekeeping') },
-        { area: 'Mantenimiento', ingresos: 0, costos: expenseByCenter('Mantenimiento') },
-        { area: 'Administración', ingresos: 0, costos: expenseByCenter('Administración') },
-      ];
-      const maxCostChartVal = Math.max(...costCenters.flatMap((c) => [c.ingresos, c.costos]));
+      // Ingresos por área (consumos) y costos por centro de costo (gastos aprobados), de los últimos 30 días.
+      const costCenters = (state.financeSummary?.areas ?? []).slice(0, 8).map((a) => ({ area: a.name, ingresos: a.ingresos, costos: a.costos }));
+      const maxCostChartVal = Math.max(0, ...costCenters.flatMap((c) => [c.ingresos, c.costos]));
 
       const { root: view } = loadViewTemplate(VIEW_HTML.costos);
       tabBody = view;
@@ -640,25 +689,12 @@ export function renderFinanzasModule() {
           ],
           formatValue: (v) => formatCurrency(v),
           height: 260,
-          yMax: maxCostChartVal <= 10000 ? 10000 : null,
+          yMax: null,
         })
       );
     } else if (activeTab === 'reportes') {
-      const monthlySeries = [
-        { month: 'Sem 1', egresos: 4200, ingresos: 3800 },
-        { month: 'Sem 2', egresos: 4400, ingresos: 4200 },
-        { month: 'Sem 3', egresos: 4650, ingresos: 4480 },
-        { month: 'Sem 4 (Actual)', egresos: 4780, ingresos: 5020 },
-        { month: 'Proy. Sem 5', egresos: 4950, ingresos: 5400 },
-      ];
-      const quarterlySeries = [
-        { month: 'Jul', egresos: 42100, ingresos: 84500 },
-        { month: 'Ago', egresos: 44300, ingresos: 91200 },
-        { month: 'Set', egresos: 43800, ingresos: 87400 },
-        { month: 'Oct', egresos: 46100, ingresos: 95800 },
-        { month: 'Nov (Est)', egresos: 48200, ingresos: 102400 },
-        { month: 'Dic (Proy)', egresos: 52500, ingresos: 118900 },
-      ];
+      const monthlySeries = state.financeSummary?.weekly ?? [];
+      const quarterlySeries = state.financeSummary?.monthly ?? [];
 
       const { root: view } = loadViewTemplate(VIEW_HTML.reportes);
       tabBody = view;
@@ -666,10 +702,10 @@ export function renderFinanzasModule() {
       mountRef(
         tabBody,
         'kpis',
-        StatTile({ label: 'Ingresos Consolidados', value: formatCurrency(totalBilled), tone: 'teal' }),
-        StatTile({ label: 'Cobranza Efectiva', value: formatCurrency(totalCollected), tone: 'success' }),
+        StatTile({ label: 'Facturado (30 días)', value: formatCurrency(totalBilled), tone: 'teal' }),
+        StatTile({ label: 'Cobrado (30 días)', value: formatCurrency(totalCollected), tone: 'success' }),
         StatTile({ label: 'Cuentas por Cobrar', value: formatCurrency(totalPending), tone: 'warning' }),
-        StatTile({ label: 'Gastos del Periodo', value: formatCurrency(totalExpenses) })
+        StatTile({ label: 'Gastos aprobados (30 días)', value: formatCurrency(totalExpenses) })
       );
 
       const toggleGroup = getRef(tabBody, 'period-toggle');
@@ -696,16 +732,19 @@ export function renderFinanzasModule() {
           ],
           formatValue: (v) => formatCurrency(v),
           height: 250,
-          yMax: isMensual ? 6000 : null,
+          yMax: null,
         })
       );
     } else if (activeTab === 'sunat') {
       if (!m4Ui.sunatXmlPreviewId && state.invoices.length > 0) {
         m4Ui.sunatXmlPreviewId = state.invoices[0].id;
       }
+      const estCfg = erpStore.establishmentConfig;
+      const supplierRuc = estCfg?.ruc || 'RUC NO CONFIGURADO';
+      const supplierName = estCfg?.razonSocial || estCfg?.nombreHotel || 'EMISOR NO CONFIGURADO';
       const sunatTarget = state.invoices.find((i) => i.id === m4Ui.sunatXmlPreviewId) || state.invoices[0];
       const xmlPreview = sunatTarget
-        ? `<?xml version="1.0" encoding="UTF-8"?>\n<!-- BORRADOR TÉCNICO UBL 2.1 — NO EMITIDO OFICIALMENTE ANTE SUNAT / OSE -->\n<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2">\n  <cbc:UBLVersionID>2.1</cbc:UBLVersionID>\n  <cbc:ID>${sunatTarget.series}-${sunatTarget.number}</cbc:ID>\n  <cbc:IssueDate>${sunatTarget.issuedAt.slice(0, 10)}</cbc:IssueDate>\n  <cbc:DocumentCurrencyCode>PEN</cbc:DocumentCurrencyCode>\n  <cac:AccountingSupplierParty>\n    <cbc:CustomerAssignedAccountID>20600123456</cbc:CustomerAssignedAccountID>\n    <cac:PartyLegalEntity><cbc:RegistrationName>HOTEL BOULEVARD S.A.C.</cbc:RegistrationName></cac:PartyLegalEntity>\n  </cac:AccountingSupplierParty>\n  <cac:AccountingCustomerParty>\n    <cbc:CustomerAssignedAccountID>${sunatTarget.customerDoc}</cbc:CustomerAssignedAccountID>\n    <cac:PartyLegalEntity><cbc:RegistrationName>${sunatTarget.customerName}</cbc:RegistrationName></cac:PartyLegalEntity>\n  </cac:AccountingCustomerParty>\n  <cac:LegalMonetaryTotal>\n    <cbc:TaxExclusiveAmount currencyID="PEN">${sunatTarget.subtotal.toFixed(2)}</cbc:TaxExclusiveAmount>\n    <cbc:PayableAmount currencyID="PEN">${sunatTarget.total.toFixed(2)}</cbc:PayableAmount>\n  </cac:LegalMonetaryTotal>\n</Invoice>`
+        ? `<?xml version="1.0" encoding="UTF-8"?>\n<!-- BORRADOR TÉCNICO UBL 2.1 — NO EMITIDO OFICIALMENTE ANTE SUNAT / OSE -->\n<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2">\n  <cbc:UBLVersionID>2.1</cbc:UBLVersionID>\n  <cbc:ID>${sunatTarget.series}-${sunatTarget.number}</cbc:ID>\n  <cbc:IssueDate>${sunatTarget.issuedAt.slice(0, 10)}</cbc:IssueDate>\n  <cbc:DocumentCurrencyCode>PEN</cbc:DocumentCurrencyCode>\n  <cac:AccountingSupplierParty>\n    <cbc:CustomerAssignedAccountID>${supplierRuc}</cbc:CustomerAssignedAccountID>\n    <cac:PartyLegalEntity><cbc:RegistrationName>${supplierName}</cbc:RegistrationName></cac:PartyLegalEntity>\n  </cac:AccountingSupplierParty>\n  <cac:AccountingCustomerParty>\n    <cbc:CustomerAssignedAccountID>${sunatTarget.customerDoc}</cbc:CustomerAssignedAccountID>\n    <cac:PartyLegalEntity><cbc:RegistrationName>${sunatTarget.customerName}</cbc:RegistrationName></cac:PartyLegalEntity>\n  </cac:AccountingCustomerParty>\n  <cac:LegalMonetaryTotal>\n    <cbc:TaxExclusiveAmount currencyID="PEN">${sunatTarget.subtotal.toFixed(2)}</cbc:TaxExclusiveAmount>\n    <cbc:PayableAmount currencyID="PEN">${sunatTarget.total.toFixed(2)}</cbc:PayableAmount>\n  </cac:LegalMonetaryTotal>\n</Invoice>`
         : 'Sin comprobantes emitidos.';
 
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.sunat);
@@ -804,38 +843,13 @@ export function renderFinanzasModule() {
       );
     }
 
-    const tabCounts = {
-      folios: state.folios.length,
-      facturacion: state.invoices.length,
-      cxc: state.receivables.length,
-      gastos: state.expenses.length,
-    };
-
-    const barTabs = visibleTabs.map((t) => ({
-      id: t.id,
-      label: t.label,
-      ...(tabCounts[t.id] !== undefined ? { count: tabCounts[t.id] } : {}),
-    }));
-
     mount(
       headerSlot,
       ModuleHeader({
-        moduleNumber: canEditCurrentTab
-          ? 'Módulo 04 · Gestión Económica y Tesorería'
-          : 'Módulo 04 · Gestión Económica y Tesorería · Modo consulta (solo lectura)',
-        title: 'Facturación y Finanzas',
-        subtitle: 'Folios integrados en vivo con Reservas y POS, pagos, cuentas por cobrar, control de caja por turno, gastos, costos, reportes e interfaz preparada para SUNAT.',
+        moduleNumber: canEditCurrentTab ? 'Facturación y Finanzas' : 'Facturación y Finanzas · Solo lectura',
+        title: activeMeta?.label ?? 'Facturación y Finanzas',
+        subtitle: activeMeta?.subtitle ?? '',
       })
-    );
-    mount(
-      tabsSlot,
-      !isTabDenied && barTabs.length > 0
-        ? SubmoduleBar({
-            tabs: barTabs,
-            activeTab,
-            onChange: (nextTab) => navigateToView('/finanzas', nextTab),
-          })
-        : null
     );
     mount(bodySlot, tabBody);
   }

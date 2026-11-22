@@ -55,7 +55,7 @@
       <div class="grid-2">
         <div>
           <label class="field-label">Huésped Titular</label>
-          <select class="select-control" data-ref="guestId"></select>
+          <div data-ref="guestId"></div>
         </div>
         <div>
           <label class="field-label">Habitación</label>
@@ -71,14 +71,7 @@
         </div>
         <div>
           <label class="field-label">Canal</label>
-          <select class="select-control" data-ref="channel">
-            <option value="Directo Web">Directo Web</option>
-            <option value="Booking.com">Booking.com</option>
-            <option value="Expedia">Expedia</option>
-            <option value="Corporativo">Corporativo</option>
-            <option value="Agencia">Agencia</option>
-            <option value="Walk-in">Walk-in</option>
-          </select>
+          <select class="select-control" data-ref="channel"></select>
         </div>
         <div>
           <label class="field-label">Tarifa por noche (S/)</label>
@@ -224,37 +217,20 @@
     <form class="stack-md">
       <div class="grid-2">
         <div>
-          <label class="field-label">Huésped / Solicitante</label>
-          <input class="input-control" required data-ref="guestName" />
-        </div>
-        <div>
-          <label class="field-label">Contacto</label>
-          <input class="input-control" required placeholder="Teléfono / Email" data-ref="contact" />
+          <label class="field-label">Huésped</label>
+          <div data-ref="guestPicker"></div>
         </div>
         <div>
           <label class="field-label">Tipo de habitación</label>
-          <select class="select-control" data-ref="roomType">
-            <option value="Estándar">Estándar</option>
-            <option value="Superior">Superior</option>
-            <option value="Deluxe Vista Mar">Deluxe Vista Mar</option>
-            <option value="Suite Junior">Suite Junior</option>
-            <option value="Suite Presidencial">Suite Presidencial</option>
-          </select>
-        </div>
-        <div>
-          <label class="field-label">Tipo conflicto</label>
-          <select class="select-control" data-ref="conflictType">
-            <option value="Lista de espera">Lista de espera</option>
-            <option value="Sobreventa">Sobreventa</option>
-          </select>
+          <select class="select-control" data-ref="roomType"></select>
         </div>
         <div>
           <label class="field-label">Ingreso</label>
-          <input type="date" class="input-control" data-ref="checkInDate" />
+          <input type="date" class="input-control" required data-ref="checkInDate" />
         </div>
         <div>
           <label class="field-label">Salida</label>
-          <input type="date" class="input-control" data-ref="checkOutDate" />
+          <input type="date" class="input-control" required data-ref="checkOutDate" />
         </div>
       </div>
       <div class="row-wrap justify-end pt-2">

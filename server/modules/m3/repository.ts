@@ -1,5 +1,6 @@
 import type { PoolClient } from 'pg';
 import type { PaginationParams } from '../../shared/types/context.ts';
+import { pushDateRange, pushSearchFilter, pushStatusFilter } from '../../shared/pagination/index.ts';
 
 export async function listCatalogo(client: PoolClient) {
   const puntosRes = await client.query(
@@ -47,13 +48,22 @@ export async function listCatalogo(client: PoolClient) {
 export async function listComandas(client: PoolClient, params: PaginationParams) {
   const values: unknown[] = [];
   const where: string[] = [];
-  if (params.status) {
-    values.push(params.status);
-    where.push(`c.estado = $${values.length}`);
+  pushStatusFilter(values, where, 'c.estado', params.status);
+  pushDateRange(values, where, 'c.fecha_hora_apertura', params.fromDate, params.toDate);
+  if (params.modalidad) {
+    values.push(params.modalidad);
+    where.push(`c.modalidad = $${values.length}`);
   }
+  pushSearchFilter(values, where, ['c.numero_comanda', 'c.nombre_mesa_capturado', 'pv.nombre', 'hb.numero', "(hu.nombres || ' ' || hu.apellidos)"], params.search);
   const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
   const countRes = await client.query<{ total: string }>(
-    `SELECT COUNT(*)::text AS total FROM g3_servicios.comanda c ${whereClause}`,
+    `SELECT COUNT(*)::text AS total
+     FROM g3_servicios.comanda c
+     JOIN g3_servicios.punto_venta pv ON pv.id_punto_venta = c.id_punto_venta
+     LEFT JOIN g3_servicios.estadia_externa ee ON ee.id_estadia_externa = c.id_estadia_externa
+     LEFT JOIN g1_reservas.habitacion hb ON hb.id_habitacion::text = ee.id_habitacion_externa
+     LEFT JOIN g1_reservas.huesped hu ON hu.id_huesped::text = ee.id_huesped_externo
+     ${whereClause}`,
     values
   );
   const offset = (params.page - 1) * params.pageSize;
@@ -73,6 +83,8 @@ export async function listComandas(client: PoolClient, params: PaginationParams)
        c.motivo_cancelacion,
        c.id_estadia_externa,
        c.usuario_responsable,
+       hb.numero AS numero_habitacion,
+       (hu.nombres || ' ' || hu.apellidos) AS huesped_nombre,
        COALESCE(
          (
            SELECT jsonb_agg(
@@ -93,8 +105,11 @@ export async function listComandas(client: PoolClient, params: PaginationParams)
        ) AS detalles
      FROM g3_servicios.comanda c
      JOIN g3_servicios.punto_venta pv ON pv.id_punto_venta = c.id_punto_venta
+     LEFT JOIN g3_servicios.estadia_externa ee ON ee.id_estadia_externa = c.id_estadia_externa
+     LEFT JOIN g1_reservas.habitacion hb ON hb.id_habitacion::text = ee.id_habitacion_externa
+     LEFT JOIN g1_reservas.huesped hu ON hu.id_huesped::text = ee.id_huesped_externo
      ${whereClause}
-     ORDER BY c.fecha_hora_apertura DESC
+     ORDER BY c.fecha_hora_apertura DESC, c.numero_comanda DESC
      LIMIT $${values.length - 1} OFFSET $${values.length}`,
     values
   );
@@ -105,13 +120,22 @@ export async function listComandas(client: PoolClient, params: PaginationParams)
 export async function listConsumos(client: PoolClient, params: PaginationParams) {
   const values: unknown[] = [];
   const where: string[] = [];
-  if (params.status) {
-    values.push(params.status);
-    where.push(`con.estado = $${values.length}`);
+  pushStatusFilter(values, where, 'con.estado', params.status);
+  pushDateRange(values, where, 'con.fecha_hora_registro', params.fromDate, params.toDate);
+  if (params.puntoVenta) {
+    values.push(params.puntoVenta);
+    where.push(`con.id_punto_venta = $${values.length}`);
   }
+  pushSearchFilter(values, where, ['con.numero_consumo', 'pv.nombre', 'con.forma_cobro', 'hb.numero', "(hu.nombres || ' ' || hu.apellidos)"], params.search);
   const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
   const countRes = await client.query<{ total: string }>(
-    `SELECT COUNT(*)::text AS total FROM g3_servicios.consumo con ${whereClause}`,
+    `SELECT COUNT(*)::text AS total
+     FROM g3_servicios.consumo con
+     JOIN g3_servicios.punto_venta pv ON pv.id_punto_venta = con.id_punto_venta
+     LEFT JOIN g3_servicios.estadia_externa ee ON ee.id_estadia_externa = con.id_estadia_externa
+     LEFT JOIN g1_reservas.habitacion hb ON hb.id_habitacion::text = ee.id_habitacion_externa
+     LEFT JOIN g1_reservas.huesped hu ON hu.id_huesped::text = ee.id_huesped_externo
+     ${whereClause}`,
     values
   );
   const offset = (params.page - 1) * params.pageSize;
@@ -131,6 +155,8 @@ export async function listConsumos(client: PoolClient, params: PaginationParams)
        con.id_cuenta_cobro_externa,
        con.id_paquete_externo,
        con.usuario_responsable,
+       hb.numero AS numero_habitacion,
+       (hu.nombres || ' ' || hu.apellidos) AS huesped_nombre,
        COALESCE(
          (
            SELECT jsonb_agg(
@@ -152,8 +178,11 @@ export async function listConsumos(client: PoolClient, params: PaginationParams)
        ) AS detalles
      FROM g3_servicios.consumo con
      JOIN g3_servicios.punto_venta pv ON pv.id_punto_venta = con.id_punto_venta
+     LEFT JOIN g3_servicios.estadia_externa ee ON ee.id_estadia_externa = con.id_estadia_externa
+     LEFT JOIN g1_reservas.habitacion hb ON hb.id_habitacion::text = ee.id_habitacion_externa
+     LEFT JOIN g1_reservas.huesped hu ON hu.id_huesped::text = ee.id_huesped_externo
      ${whereClause}
-     ORDER BY con.fecha_hora_registro DESC
+     ORDER BY con.fecha_hora_registro DESC, con.numero_consumo DESC
      LIMIT $${values.length - 1} OFFSET $${values.length}`,
     values
   );
@@ -201,7 +230,7 @@ export async function listInventario(client: PoolClient, params: PaginationParam
      JOIN g3_servicios.categoria c ON c.id_categoria = aa.id_categoria
      JOIN g3_servicios.unidad_medida um ON um.id_unidad_medida = aa.id_unidad_medida
      ${whereClause}
-     ORDER BY aa.nombre ASC
+     ORDER BY aa.nombre ASC, aa.id_articulo ASC
      LIMIT $${values.length - 1} OFFSET $${values.length}`,
     values
   );
@@ -212,13 +241,15 @@ export async function listInventario(client: PoolClient, params: PaginationParam
 export async function listOrdenesCompra(client: PoolClient, params: PaginationParams) {
   const values: unknown[] = [];
   const where: string[] = [];
-  if (params.status) {
-    values.push(params.status);
-    where.push(`oc.estado = $${values.length}`);
-  }
+  pushStatusFilter(values, where, 'oc.estado', params.status);
+  pushDateRange(values, where, 'oc.fecha_hora_preparacion', params.fromDate, params.toDate);
+  pushSearchFilter(values, where, ['oc.numero_orden', 'p.razon_social'], params.search);
   const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
   const countRes = await client.query<{ total: string }>(
-    `SELECT COUNT(*)::text AS total FROM g3_servicios.orden_compra oc ${whereClause}`,
+    `SELECT COUNT(*)::text AS total
+     FROM g3_servicios.orden_compra oc
+     JOIN g3_servicios.proveedor p ON p.id_proveedor = oc.id_proveedor
+     ${whereClause}`,
     values
   );
   const offset = (params.page - 1) * params.pageSize;
@@ -257,7 +288,7 @@ export async function listOrdenesCompra(client: PoolClient, params: PaginationPa
      FROM g3_servicios.orden_compra oc
      JOIN g3_servicios.proveedor p ON p.id_proveedor = oc.id_proveedor
      ${whereClause}
-     ORDER BY oc.fecha_hora_preparacion DESC
+     ORDER BY oc.fecha_hora_preparacion DESC, oc.numero_orden DESC
      LIMIT $${values.length - 1} OFFSET $${values.length}`,
     values
   );

@@ -12,7 +12,7 @@ import { getRoute, navigateToView } from '../core/router.js';
 import { erpStore } from '../core/store.js';
 import { ALL_ROLE_IDS, ROLE_LABELS } from '../data/rbac.js';
 import { v1Api } from '../services/api-client.js';
-import { ModuleHeader, StatusText, SubmoduleBar } from '../components/ui-components.js';
+import { ModuleHeader, StatusText } from '../components/ui-components.js';
 import moduloBaseHtml from '../../html/modules/modulo-base.html?raw';
 import rbacHtml from '../../html/pages/configuracion/rbac.html?raw';
 import usuariosHtml from '../../html/pages/configuracion/usuarios.html?raw';
@@ -25,11 +25,9 @@ const VIEW_HTML = {
 };
 
 const VIEW_META = {
-  rbac: { title: 'Matriz RBAC (16 Roles)', subtitle: 'Control de acceso granular por módulo, submódulo y visibilidad de datos.' },
-  usuarios: { title: 'Directorio de Usuarios', subtitle: 'Cuentas corporativas activas en el sistema con credenciales protegidas.' },
-  iso: { title: 'ISO/IEC 27701 & ISO 9241', subtitle: 'Gestión de privacidad de datos, enmascaramiento de PII y ergonomía de sistemas interactivos.' },
-  supabase: { title: 'Supabase / RLS / Demo', subtitle: 'Conectividad con backend cloud PostgreSQL, políticas Row Level Security y respaldo local.' },
-  auditoria: { title: 'Bitácoras por módulo', subtitle: 'Registro consolidado en lectura desde g1_reservas, g2_housekeeping, g3_servicios, g4_finanzas y g5_crm.' },
+  rbac: { title: 'Permisos por Rol', subtitle: 'Control de acceso por módulo, sección y visibilidad de datos.' },
+  usuarios: { title: 'Directorio de Usuarios', subtitle: 'Cuentas con acceso al sistema y su rol asignado.' },
+  auditoria: { title: 'Auditoría', subtitle: 'Registro de actividad del sistema por módulo.' },
 };
 
 const cfgUi = {
@@ -61,7 +59,6 @@ const AUDIT_MODULE_LABELS = {
 export function renderConfigPage() {
   const root = parseHtmlTemplate(moduloBaseHtml);
   const headerSlot = getRef(root, 'header-slot');
-  const tabsSlot = getRef(root, 'tabs-slot');
   const bodySlot = getRef(root, 'body-slot');
 
   function renderContent() {
@@ -72,7 +69,7 @@ export function renderConfigPage() {
     if (!state || !currentUser) return;
 
     const route = getRoute();
-    const visibleIds = ['rbac', 'usuarios', 'iso', 'supabase', 'auditoria'].filter((id) =>
+    const visibleIds = ['rbac', 'usuarios', 'auditoria'].filter((id) =>
       erpStore.canViewTab('config', id)
     );
     const defaultTab = erpStore.getDefaultTab('config') || visibleIds[0] || 'rbac';
@@ -117,40 +114,7 @@ export function renderConfigPage() {
     let tabNode = null;
     let clone = null;
 
-    if (activeTab === 'iso') {
-      tabNode = h('div', { className: 'stack-md' },
-        h('div', { className: 'card p-6 stack-md' },
-          h('h3', { className: 'text-sm font-bold text-navy' }, 'Gestión de Privacidad y Seguridad de la Información (ISO/IEC 27701)'),
-          h('p', { className: 'text-xs text-slate-600' }, 'SGH-ERP implementa controles estrictos para la protección de datos personales de huéspedes y personal conforme a la norma ISO/IEC 27701 (extensión de privacidad para ISO/IEC 27001).'),
-          h('div', { className: 'grid grid-cols-2 gap-4 mt-2' },
-            h('div', { className: 'border p-4 rounded-md bg-slate-50' },
-              h('div', { className: 'font-semibold text-xs text-navy mb-1' }, 'Minimización y Enmascaramiento de PII'),
-              h('p', { className: 'text-11 text-slate-600' }, 'Los documentos de identidad (DNI/Pasaporte), correos y teléfonos se muestran enmascarados (••••123) para perfiles sin autorización expresa de visualización completa.')
-            ),
-            h('div', { className: 'border p-4 rounded-md bg-slate-50' },
-              h('div', { className: 'font-semibold text-xs text-navy mb-1' }, 'Consentimiento Informado (Opt-In)'),
-              h('p', { className: 'text-11 text-slate-600' }, 'El registro de huéspedes recopila el consentimiento explícito ISO 27701 para comunicaciones comerciales y fidelización, respetando el derecho de oposición.')
-            )
-          )
-        ),
-        h('div', { className: 'card p-6 stack-md' },
-          h('h3', { className: 'text-sm font-bold text-navy' }, 'Ergonomía e Interacción Humano-Sistema (ISO 9241)'),
-          h('p', { className: 'text-xs text-slate-600' }, 'Diseño de interfaces centrado en el operador hotelero con jerarquía tipográfica clara (Barlow), contrastes accesibles y tiempos de respuesta optimizados para turnos continuos de recepción y planta.')
-        )
-      );
-    } else if (activeTab === 'supabase') {
-      tabNode = h('div', { className: 'stack-md' },
-        h('div', { className: 'card p-6 stack-md' },
-          h('h3', { className: 'text-sm font-bold text-navy' }, 'Conectividad Supabase Auth y PostgreSQL'),
-          h('p', { className: 'text-xs text-slate-600' }, 'El sistema está conectado a la instancia cloud de Supabase con autenticación JWT segura y Row Level Security (RLS).'),
-          h('div', { className: 'border p-4 rounded-md bg-slate-50 font-mono text-11 text-slate-700 space-y-1' },
-            h('div', null, 'Supabase URL: https://htuecistkojkqsygllyt.supabase.co'),
-            h('div', null, 'Modo de Autenticación: Supabase Auth (JWT Bearer) + Respaldo Local'),
-            h('div', null, 'Estado Base de Datos: Conectada (Pool IPv4 / SSL Configurado)')
-          )
-        )
-      );
-    } else {
+    {
       const loaded = loadViewTemplate(VIEW_HTML[activeTab] || rbacHtml);
       tabNode = loaded.root;
       clone = loaded.clone;
@@ -273,31 +237,13 @@ export function renderConfigPage() {
     }
 
     const meta = VIEW_META[activeTab] || VIEW_META.rbac;
-    const configTabs = [
-      { id: 'rbac', label: 'Matriz de Roles (RBAC)', count: ALL_ROLE_IDS.length },
-      { id: 'usuarios', label: 'Directorio de Usuarios', count: directoryUsers.length },
-      { id: 'iso', label: 'ISO/IEC 27701 & ISO 9241' },
-      { id: 'supabase', label: 'Supabase / RLS / Demo' },
-      { id: 'auditoria', label: 'Bitácora de Auditoría', count: state.auditLog.length },
-    ].filter((t) => visibleIds.includes(t.id));
-
     mount(
       headerSlot,
       ModuleHeader({
-        moduleNumber: 'CONFIGURACIÓN DEL SISTEMA',
+        moduleNumber: 'Configuración',
         title: meta.title,
         subtitle: meta.subtitle,
       })
-    );
-    mount(
-      tabsSlot,
-      configTabs.length > 0
-        ? SubmoduleBar({
-            tabs: configTabs,
-            activeTab,
-            onChange: (nextTab) => navigateToView('/configuracion', nextTab),
-          })
-        : null
     );
     mount(bodySlot, tabNode);
   }

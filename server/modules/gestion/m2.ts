@@ -1,11 +1,12 @@
 import type { Router } from 'express';
 import { z } from 'zod';
 import { requirePermission } from '../../middleware/authorize.ts';
-import { validateBody, validateParams } from '../../middleware/validate.ts';
+import { validateBody, validateParams, validateQuery } from '../../middleware/validate.ts';
 import { withReadOnlyClient, withTransaction } from '../../shared/database/transaction.ts';
 import { ConflictError, DomainRuleError, NotFoundError } from '../../shared/errors/app-error.ts';
 import { bigintIdSchema, dateOnlySchema, varcharIdSchema } from '../../shared/validation/common.ts';
 import { PERMISSIONS } from '../seguridad/permissions.ts';
+import { buildPaginatedResponse, paginationQuerySchema, parsePagination, pushDateRange, pushSearchFilter, pushStatusFilter } from '../../shared/pagination/index.ts';
 import { handle } from './helpers.ts';
 import { crearRequisicion } from './m3.ts';
 
@@ -66,27 +67,40 @@ export function registerM2Gestion(router: Router): void {
     )
   );
 
-  // ---- Historial de inspecciones (las 200 más recientes)
+  // ---- Historial de inspecciones (paginado; filtros: search = habitación o supervisor, status = resultado, fechas)
   router.get(
     '/inspecciones',
     requirePermission(PERMISSIONS.M2_LIMPIEZA_CONSULTAR),
+    validateQuery(paginationQuerySchema),
     handle((req) =>
       withReadOnlyClient(async (client) => {
+        const params = parsePagination(req.query as Record<string, unknown>);
+        const values: unknown[] = [];
+        const where: string[] = [];
+        pushStatusFilter(values, where, 'i.resultado', params.status);
+        pushDateRange(values, where, 'i.fecha_hora', params.fromDate, params.toDate);
+        pushSearchFilter(values, where, ['h.numero', "(po.nombres || ' ' || po.apellidos)", 'i.motivo_rechazo'], params.search);
+        const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
+        const from = `FROM g2_housekeeping.inspeccion i
+           JOIN g2_housekeeping.orden_limpieza ol ON ol.numero_orden = i.numero_orden
+           JOIN g1_reservas.habitacion h ON h.id_habitacion = ol.id_habitacion
+           LEFT JOIN g2_housekeeping.personal_operativo po ON po.id_personal = i.id_supervisor`;
+        const count = await client.query<{ total: string }>(`SELECT COUNT(*)::text AS total ${from} ${whereClause}`, values);
+        values.push(params.pageSize, (params.page - 1) * params.pageSize);
         const res = await client.query(
           `SELECT i.id_inspeccion::text AS id_inspeccion, i.numero_orden::text AS numero_orden,
                   i.resultado, i.motivo_rechazo, i.lista_verificacion, i.fecha_hora,
                   h.numero AS numero_habitacion,
                   NULLIF(btrim(COALESCE(po.nombres, '') || ' ' || COALESCE(po.apellidos, '')), '') AS supervisor
-           FROM g2_housekeeping.inspeccion i
-           JOIN g2_housekeeping.orden_limpieza ol ON ol.numero_orden = i.numero_orden
-           JOIN g1_reservas.habitacion h ON h.id_habitacion = ol.id_habitacion
-           LEFT JOIN g2_housekeeping.personal_operativo po ON po.id_personal = i.id_supervisor
+           ${from}
+           ${whereClause}
            ORDER BY i.fecha_hora DESC, i.id_inspeccion DESC
-           LIMIT 200`
+           LIMIT $${values.length - 1} OFFSET $${values.length}`,
+          values
         );
-        return res.rows;
+        return buildPaginatedResponse(res.rows, Number(count.rows[0]?.total ?? 0), params.page, params.pageSize);
       }, req.authContext!)
-    )
+    , 200, true)
   );
 
   // ---- Activos

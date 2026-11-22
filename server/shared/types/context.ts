@@ -33,6 +33,9 @@ export interface PaginationParams {
   fromDate?: string;
   toDate?: string;
   status?: string;
+  /** Filtros específicos de Servicios: modalidad de la comanda y punto de venta. */
+  modalidad?: string;
+  puntoVenta?: string;
 }
 
 export interface PaginationMeta {

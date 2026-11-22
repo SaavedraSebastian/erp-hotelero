@@ -254,10 +254,8 @@
   background: var(--slate-100);
 }
 
-@media (min-width: 1024px) {
-  .mobile-menu-btn {
-    display: none;
-  }
+.erp-shell.sidebar-collapsed .erp-sidebar-desktop {
+  display: none;
 }
 
 .topbar-search-wrap {

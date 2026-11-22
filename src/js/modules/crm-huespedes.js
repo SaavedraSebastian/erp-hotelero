@@ -27,6 +27,7 @@ import { getRoute, navigateToView } from '../core/router.js';
 import { erpStore } from '../core/store.js';
 import { maskDocument, maskEmail, maskPhone } from '../data/rbac.js';
 import { sendCRMChatMessage } from '../services/ai-client.js';
+import { apiV1Request } from '../services/api-client.js';
 import {
   AccessDeniedCard,
   EmptyState,
@@ -34,7 +35,6 @@ import {
   ModuleHeader,
   StatTile,
   StatusText,
-  SubmoduleBar,
   openModal,
 } from '../components/ui-components.js';
 
@@ -54,19 +54,21 @@ const VIEW_HTML = {
 };
 
 const M5_TABS = [
-  { id: 'perfil_360', label: 'Perfil 360°' },
-  { id: 'segmentacion', label: 'Segmentación' },
-  { id: 'fidelizacion', label: 'Fidelización' },
-  { id: 'campanas', label: 'Campañas' },
-  { id: 'reclamos', label: 'Reclamos' },
-  { id: 'solicitudes', label: 'Solicitudes' },
-  { id: 'encuestas', label: 'Encuestas' },
-  { id: 'resenas', label: 'Reseñas' },
-  { id: 'portal_ia', label: 'Autoatención' },
-  { id: 'ia_conversacional', label: 'IA Conversacional' },
+  { id: 'perfil_360', label: 'Perfil 360°', subtitle: 'Ficha integral del huésped: estadías, consumos y preferencias.' },
+  { id: 'segmentacion', label: 'Segmentación', subtitle: 'Segmentos de huéspedes.' },
+  { id: 'fidelizacion', label: 'Fidelización', subtitle: 'Puntos y beneficios de fidelización.' },
+  { id: 'campanas', label: 'Campañas', subtitle: 'Campañas de marketing por segmento y canal.' },
+  { id: 'reclamos', label: 'Reclamos', subtitle: 'Registro y seguimiento de reclamos.' },
+  { id: 'solicitudes', label: 'Solicitudes', subtitle: 'Solicitudes de los huéspedes.' },
+  { id: 'encuestas', label: 'Encuestas', subtitle: 'Resultados de las encuestas de satisfacción.' },
+  { id: 'resenas', label: 'Reseñas', subtitle: 'Reseñas de huéspedes y sus respuestas.' },
+  { id: 'portal_ia', label: 'Autoatención', subtitle: 'Solicitudes de autoatención del huésped.' },
+  { id: 'ia_conversacional', label: 'IA Conversacional', subtitle: 'Asistente conversacional para consultas de CRM.' },
 ];
 
 const m5Ui = {
+  rewards: null, // null = aún sin leer; [] = leído sin beneficios
+  rewardsLoading: false,
   selectedGuestId: '',
   selectedLoyaltyGuestId: '',
   segmentFilter: 'Todos',
@@ -87,7 +89,6 @@ const m5Ui = {
 export function renderCRMModule() {
   const root = parseHtmlTemplate(moduleShellHtml);
   const headerSlot = getRef(root, 'header-slot');
-  const tabsSlot = getRef(root, 'tabs-slot');
   const bodySlot = getRef(root, 'body-slot');
 
   function getStatusVariant(status) {
@@ -264,6 +265,7 @@ export function renderCRMModule() {
     const defaultTab = erpStore.getDefaultTab('m5') || visibleTabs[0]?.id || 'perfil_360';
     const requestedTab = route.tab || defaultTab;
     const activeTab = visibleTabs.some((t) => t.id === requestedTab) ? requestedTab : defaultTab;
+    const activeMeta = M5_TABS.find((t) => t.id === activeTab);
     const isTabDenied = Boolean(route.tab && !erpStore.canViewTab('m5', route.tab));
     const canEditCurrentTab = erpStore.canEditTab('m5', activeTab);
 
@@ -436,12 +438,23 @@ export function renderCRMModule() {
         })
       );
     } else if (activeTab === 'fidelizacion') {
-      const rewards = [
-        { label: 'Desayuno Buffet para 2 personas', points: 800 },
-        { label: 'Circuito Hidrotermal en Spa', points: 1500 },
-        { label: 'Upgrade a Suite Junior (1 noche)', points: 2500 },
-        { label: 'Noche de cortesía Deluxe Vista Mar', points: 4000 },
-      ];
+      // Catálogo de beneficios real (g5_crm.beneficio), leído una vez desde el perfil de fidelización.
+      const rewards = m5Ui.rewards ?? [];
+      const rewardsSource = state.guests.find((g) => g.profileId);
+      if (m5Ui.rewards === null && !m5Ui.rewardsLoading && rewardsSource) {
+        m5Ui.rewardsLoading = true;
+        apiV1Request(`/m5/fidelizacion/perfiles/${rewardsSource.profileId}`)
+          .then((res) => {
+            m5Ui.rewards = (res?.data?.beneficios ?? []).map((b) => ({ label: b.nombre, points: Number(b.puntos_requeridos) || 0 }));
+          })
+          .catch(() => {
+            m5Ui.rewards = [];
+          })
+          .finally(() => {
+            m5Ui.rewardsLoading = false;
+            renderContent();
+          });
+      }
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.fidelizacion);
       tabBody = view;
       mountRef(tabBody, 'award-icon', icon('award', 'w-4 text-teal'));
@@ -816,40 +829,13 @@ export function renderCRMModule() {
       );
     }
 
-    const tabCounts = {
-      perfil_360: state.guests.length,
-      campanas: state.campaigns.length,
-      reclamos: state.complaints.filter((c) => c.status !== 'Resuelto').length,
-      solicitudes: state.guestRequests.filter((r) => r.status !== 'Atendida').length,
-      encuestas: state.surveys.length,
-      resenas: state.reviews.length,
-    };
-
-    const barTabs = visibleTabs.map((t) => ({
-      id: t.id,
-      label: t.label,
-      ...(tabCounts[t.id] !== undefined ? { count: tabCounts[t.id] } : {}),
-    }));
-
     mount(
       headerSlot,
       ModuleHeader({
-        moduleNumber: canEditCurrentTab
-          ? 'Módulo 05 · Experiencia, Fidelización y Soporte'
-          : 'Módulo 05 · Experiencia, Fidelización y Soporte · Modo consulta (solo lectura)',
-        title: 'CRM y Atención al Huésped',
-        subtitle: 'Perfil 360°, segmentación, fidelización, campañas, reclamos conectados a Mantenimiento, autoatención e IA conversacional.',
+        moduleNumber: canEditCurrentTab ? 'CRM y Atención' : 'CRM y Atención · Solo lectura',
+        title: activeMeta?.label ?? 'CRM y Atención',
+        subtitle: activeMeta?.subtitle ?? '',
       })
-    );
-    mount(
-      tabsSlot,
-      !isTabDenied && barTabs.length > 0
-        ? SubmoduleBar({
-            tabs: barTabs,
-            activeTab,
-            onChange: (nextTab) => navigateToView('/crm', nextTab),
-          })
-        : null
     );
     mount(bodySlot, tabBody);
   }

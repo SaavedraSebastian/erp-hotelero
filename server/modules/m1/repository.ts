@@ -1,5 +1,6 @@
 import type { PoolClient } from 'pg';
 import type { PaginationParams } from '../../shared/types/context.ts';
+import { pushSearchFilter, pushStatusFilter } from '../../shared/pagination/index.ts';
 
 export interface HabitacionEstadoRow {
   id_habitacion: string;
@@ -102,16 +103,8 @@ export async function listHuespedes(
   const values: unknown[] = [];
   const where: string[] = [];
 
-  if (params.search) {
-    values.push(`%${params.search}%`);
-    where.push(
-      `(nombres ILIKE $${values.length} OR apellidos ILIKE $${values.length} OR numero_documento ILIKE $${values.length})`
-    );
-  }
-  if (params.status) {
-    values.push(params.status);
-    where.push(`estado = $${values.length}`);
-  }
+  pushSearchFilter(values, where, ['nombres', 'apellidos', "(nombres || ' ' || apellidos)", 'numero_documento', 'correo', 'empresa'], params.search);
+  pushStatusFilter(values, where, 'estado', params.status);
 
   const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
   const countRes = await client.query<{ total: string }>(
@@ -256,23 +249,7 @@ export async function updateHuesped(
   return res.rows[0] ?? null;
 }
 
-export async function listTarifas(client: PoolClient) {
-  const res = await client.query<{
-    id_tarifa: string;
-    nombre: string;
-    precio_base: string;
-    fecha_inicio: string;
-    fecha_fin: string;
-    estado: string;
-    id_tipo_habitacion: string;
-    tipo_habitacion: string;
-    id_temporada: string;
-    temporada: string;
-    factor_ajuste: string;
-    id_canal_reserva: string;
-    canal: string;
-  }>(
-    `SELECT
+const TARIFA_SELECT = `SELECT
        t.id_tarifa::text AS id_tarifa,
        t.nombre,
        t.precio_base::text AS precio_base,
@@ -289,20 +266,49 @@ export async function listTarifas(client: PoolClient) {
      FROM g1_reservas.tarifa t
      JOIN g1_reservas.tipo_habitacion th ON th.id_tipo_habitacion = t.id_tipo_habitacion
      JOIN g1_reservas.temporada tmp ON tmp.id_temporada = t.id_temporada
-     JOIN g1_reservas.canal_reserva c ON c.id_canal_reserva = t.id_canal_reserva
-     ORDER BY t.id_tarifa DESC`
-  );
+     JOIN g1_reservas.canal_reserva c ON c.id_canal_reserva = t.id_canal_reserva`;
+
+/** Tarifas activas y vigentes hoy (las que se usan para reservar); sin paginar porque es un conjunto pequeño. */
+export async function listTarifas(client: PoolClient, opts: { soloVigentes?: boolean } = {}) {
+  const where = opts.soloVigentes ? "WHERE t.estado = 'ACTIVA' AND CURRENT_DATE BETWEEN t.fecha_inicio AND t.fecha_fin" : '';
+  const res = await client.query(`${TARIFA_SELECT} ${where} ORDER BY t.id_tarifa DESC`);
   return res.rows;
+}
+
+/** Listado paginado para el mantenedor de tarifas (búsqueda, estado y vigencia). */
+export async function listTarifasPaginado(client: PoolClient, params: PaginationParams, soloVigentes = false) {
+  const values: unknown[] = [];
+  const where: string[] = [];
+  pushStatusFilter(values, where, 't.estado', params.status);
+  pushSearchFilter(values, where, ['t.nombre', 'th.nombre', 'c.nombre', 'tmp.nombre'], params.search);
+  if (soloVigentes) where.push('CURRENT_DATE BETWEEN t.fecha_inicio AND t.fecha_fin');
+  const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
+  const countRes = await client.query<{ total: string }>(
+    `SELECT COUNT(*)::text AS total
+     FROM g1_reservas.tarifa t
+     JOIN g1_reservas.tipo_habitacion th ON th.id_tipo_habitacion = t.id_tipo_habitacion
+     JOIN g1_reservas.temporada tmp ON tmp.id_temporada = t.id_temporada
+     JOIN g1_reservas.canal_reserva c ON c.id_canal_reserva = t.id_canal_reserva
+     ${whereClause}`,
+    values
+  );
+  const offset = (params.page - 1) * params.pageSize;
+  values.push(params.pageSize, offset);
+  const res = await client.query(
+    `${TARIFA_SELECT}
+     ${whereClause}
+     ORDER BY th.nombre ASC, t.fecha_inicio DESC, t.id_tarifa DESC
+     LIMIT $${values.length - 1} OFFSET $${values.length}`,
+    values
+  );
+  return { rows: res.rows, total: Number(countRes.rows[0]?.total ?? 0) };
 }
 
 export async function listReservas(client: PoolClient, params: PaginationParams) {
   const values: unknown[] = [];
   const where: string[] = [];
 
-  if (params.status) {
-    values.push(params.status);
-    where.push(`r.estado = $${values.length}`);
-  }
+  pushStatusFilter(values, where, 'r.estado', params.status);
   if (params.fromDate) {
     values.push(params.fromDate);
     where.push(`r.fecha_ingreso >= $${values.length}::date`);
@@ -313,7 +319,14 @@ export async function listReservas(client: PoolClient, params: PaginationParams)
   }
   if (params.search) {
     values.push(`%${params.search}%`);
-    where.push(`(h.nombres ILIKE $${values.length} OR h.apellidos ILIKE $${values.length} OR r.id_reserva::text ILIKE $${values.length})`);
+    const ph = `$${values.length}`;
+    where.push(
+      `(h.nombres ILIKE ${ph} OR h.apellidos ILIKE ${ph} OR (h.nombres || ' ' || h.apellidos) ILIKE ${ph}
+        OR r.id_reserva::text ILIKE ${ph} OR ('RES-' || lpad(r.id_reserva::text, 5, '0')) ILIKE ${ph}
+        OR EXISTS (SELECT 1 FROM g1_reservas.detalle_reserva dr2
+                   JOIN g1_reservas.habitacion hab2 ON hab2.id_habitacion = dr2.id_habitacion
+                   WHERE dr2.id_reserva = r.id_reserva AND hab2.numero ILIKE ${ph}))`
+    );
   }
 
   const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
@@ -394,13 +407,15 @@ export async function listReservas(client: PoolClient, params: PaginationParams)
 export async function listListaEspera(client: PoolClient, params: PaginationParams) {
   const values: unknown[] = [];
   const where: string[] = [];
-  if (params.status) {
-    values.push(params.status);
-    where.push(`le.estado = $${values.length}`);
-  }
+  pushStatusFilter(values, where, 'le.estado', params.status);
+  pushSearchFilter(values, where, ["(h.nombres || ' ' || h.apellidos)", 'th.nombre'], params.search);
   const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
   const countRes = await client.query<{ total: string }>(
-    `SELECT COUNT(*)::text AS total FROM g1_reservas.lista_espera le ${whereClause}`,
+    `SELECT COUNT(*)::text AS total
+     FROM g1_reservas.lista_espera le
+     JOIN g1_reservas.huesped h ON h.id_huesped = le.id_huesped
+     JOIN g1_reservas.tipo_habitacion th ON th.id_tipo_habitacion = le.id_tipo_habitacion
+     ${whereClause}`,
     values
   );
   const offset = (params.page - 1) * params.pageSize;
@@ -433,7 +448,7 @@ export async function listListaEspera(client: PoolClient, params: PaginationPara
      JOIN g1_reservas.huesped h ON h.id_huesped = le.id_huesped
      JOIN g1_reservas.tipo_habitacion th ON th.id_tipo_habitacion = le.id_tipo_habitacion
      ${whereClause}
-     ORDER BY le.prioridad DESC, le.fecha_registro ASC
+     ORDER BY le.prioridad DESC, le.fecha_registro ASC, le.id_lista_espera ASC
      LIMIT $${values.length - 1} OFFSET $${values.length}`,
     values
   );

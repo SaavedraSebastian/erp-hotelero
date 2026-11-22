@@ -93,6 +93,7 @@ export function mapM2({ ordenesLimpieza = [], incidencias = [], ordenesTrabajo =
       type: o.tipo_limpieza || '',
       priority: o.prioridad || '',
       assignedStaffId: optId(o.id_personal_asignado),
+      assignedStaffName: o.personal_asignado || '',
       status,
       sourceFlow: o.origen || undefined,
       createdAt: toStamp(o.fecha_hora_creacion),
@@ -134,6 +135,7 @@ export function mapM2({ ordenesLimpieza = [], incidencias = [], ordenesTrabajo =
       location: w.activo_nombre || '',
       description: w.descripcion_tarea || '',
       assignedStaffId: optId(w.id_tecnico),
+      assignedStaffName: w.tecnico_nombre || '',
       priority: w.prioridad || '',
       status,
       estimatedCost: toNumber(w.costo_total),
@@ -203,6 +205,18 @@ export function mapM2({ ordenesLimpieza = [], incidencias = [], ordenesTrabajo =
 
   return { cleaningOrders, incidents, workOrders, hkSupplies, assets, preventiveSchedules, inspections, staff: [...staffMap.values()] };
 }
+
+/** Mapeos de filas sueltas (listados paginados). */
+export const mapInvoiceRows = (rows) => mapM4({ comprobantes: rows }).invoices;
+export const mapReceivableRows = (rows) => mapM4({ cxc: rows }).receivables;
+export const mapExpenseRows = (rows) => mapM4({ gastos: rows }).expenses;
+export const mapComandaRows = (rows) => mapM3({ comandas: rows }).posOrders;
+export const mapConsumoRows = (rows) => mapM3({ consumos: rows }).posOrders;
+export const mapPurchaseOrderRows = (rows) => mapM3({ ordenesCompra: rows }).purchaseOrders;
+export const mapCleaningRows = (rows) => mapM2({ ordenesLimpieza: rows }).cleaningOrders;
+export const mapIncidentRows = (rows) => mapM2({ incidencias: rows }).incidents;
+export const mapWorkOrderRows = (rows) => mapM2({ ordenesTrabajo: rows }).workOrders;
+export const mapInspectionRows = (rows) => mapM2({ inspecciones: rows }).inspections;
 
 /** Tarifa dinámica: ocupación proyectada, demanda en espera y ajuste sugerido por tipo de habitación (calculado en el servidor). */
 export function mapDynamicPricing(raw) {
@@ -391,8 +405,8 @@ export function mapM3({
       source: c.modalidad === 'habitación' ? 'Room Service' : 'Restaurante',
       tableNumber: c.nombre_mesa_capturado || undefined,
       roomId: '',
-      roomNumber: '',
-      guestName: '',
+      roomNumber: c.numero_habitacion || '',
+      guestName: c.huesped_nombre || '',
       items: orderItems,
       total: sum(orderItems, (i) => i.subtotal),
       paymentMode: '',
@@ -412,8 +426,8 @@ export function mapM3({
       accountId: idOf(c.id_cuenta_cobro_externa),
       source: /minibar/i.test(c.punto_venta_nombre || '') ? 'Minibar' : 'Servicios Complementarios',
       roomId: '',
-      roomNumber: '',
-      guestName: '',
+      roomNumber: c.numero_habitacion || '',
+      guestName: c.huesped_nombre || '',
       items: detailItems(c.detalles, 'precio_capturado'),
       total: toNumber(c.importe_total),
       paymentMode: c.forma_cobro || '',
@@ -852,4 +866,35 @@ export function mapAuditLog(rows = []) {
     entityRef: a.entidadRef || '',
     privacyImpact: Boolean(a.impactoPrivacidad),
   }));
+}
+
+const SHORT_MONTHS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Set', 'Oct', 'Nov', 'Dic'];
+
+/** Resumen financiero calculado en el servidor (totales, series semanal y mensual, desglose por área). */
+export function mapFinanceSummary(raw) {
+  if (!raw || !raw.totales) return null;
+  const weekly = (raw.semanal ?? []).map((w, i, arr) => ({
+    month: i === arr.length - 1 ? 'Últ. 7 días' : `${String(w.desde).slice(8, 10)}/${String(w.desde).slice(5, 7)}`,
+    ingresos: Number(w.ingresos) || 0,
+    egresos: Number(w.egresos) || 0,
+  }));
+  const monthly = (raw.mensual ?? []).map((m, i, arr) => ({
+    month: `${SHORT_MONTHS[Number(String(m.mes).slice(5, 7)) - 1] ?? m.mes}${i === arr.length - 1 ? ' (a hoy)' : ''}`,
+    ingresos: Number(m.ingresos) || 0,
+    egresos: Number(m.egresos) || 0,
+  }));
+  return {
+    from: raw.desde,
+    to: raw.hasta,
+    billed: Number(raw.totales.facturado) || 0,
+    collected: Number(raw.totales.cobrado) || 0,
+    receivable: Number(raw.totales.por_cobrar) || 0,
+    expenses: Number(raw.totales.gastos) || 0,
+    pendingExpenses: Number(raw.totales.gastos_pendientes) || 0,
+    servicesSales: Number(raw.totales.ventas_servicios) || 0,
+    servicesCount: Number(raw.totales.cantidad_servicios) || 0,
+    weekly,
+    monthly,
+    areas: (raw.areas ?? []).map((a) => ({ name: a.nombre || 'Sin clasificar', ingresos: Math.round(Number(a.ingresos) || 0), costos: Math.round(Number(a.costos) || 0) })),
+  };
 }

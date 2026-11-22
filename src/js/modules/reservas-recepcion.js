@@ -35,10 +35,14 @@ import {
   SearchInput,
   StatTile,
   StatusText,
-  SubmoduleBar,
   openModal,
 } from '../components/ui-components.js';
 import { renderStackedBarChart } from '../components/charts.js';
+import { bindPagedView } from '../components/paged-view.js';
+import { GuestPicker } from '../components/guest-picker.js';
+import { localPager, resetLocalPager } from '../components/pagination.js';
+import { getPagedList, setActivePagedList } from '../services/paged-list.js';
+import { mapGuests, mapRatePlans, mapReservations, mapWaitlist } from '../services/data-adapter.js';
 
 const cloneModal = createTemplateLibrary(modalesHtml);
 
@@ -56,34 +60,32 @@ const VIEW_HTML = {
 };
 
 const M1_TABS = [
-  { id: 'habitaciones', label: 'Habitaciones', subtitle: 'Estado comercial vs. estado físico sincronizado con Housekeeping.' },
-  { id: 'disponibilidad', label: 'Disponibilidad', subtitle: 'Calendario semanal real cruzado con reservas y bloqueos físicos.' },
-  { id: 'reservas', label: 'Reservas', subtitle: 'Control integral de reservas, estados, canales e historial operativo.' },
-  { id: 'tarifas', label: 'Tarifas', subtitle: 'Planes tarifarios por temporada y actualización sincronizada de habitaciones.' },
-  { id: 'checkin', label: 'Check-in', subtitle: 'Ingreso con verificación del estado físico de limpieza de habitación.' },
-  { id: 'checkout', label: 'Check-out', subtitle: 'Validación de Folio, traslado a Cuentas por Cobrar y orden de limpieza.' },
-  { id: 'lista_espera', label: 'Sobreventa / Espera', subtitle: 'Resolución autorizada de conflictos de fechas y solicitudes en espera.' },
-  { id: 'ocupacion', label: 'Ocupación', subtitle: 'KPIs de ADR, RevPAR y comparativa gráfica por categoría.' },
-  { id: 'huespedes', label: 'Huéspedes', subtitle: 'Directorio de perfiles, preferencias, fidelización y privacidad.' },
-  { id: 'ia_tarifas', label: 'IA Tarifas y No-Show', subtitle: 'Tarifas dinámicas explicables, predicción de no-show y análisis asistido.' },
+  { id: 'habitaciones', label: 'Habitaciones', subtitle: 'Estado comercial y estado físico de cada habitación.' },
+  { id: 'disponibilidad', label: 'Disponibilidad', subtitle: 'Calendario semanal de disponibilidad por habitación.' },
+  { id: 'reservas', label: 'Reservas', subtitle: 'Consulta y gestión de reservas, estados y canales.' },
+  { id: 'tarifas', label: 'Tarifas', subtitle: 'Tarifas por tipo de habitación, temporada y canal.' },
+  { id: 'checkin', label: 'Check-in', subtitle: 'Registro de ingreso de huéspedes con reserva confirmada.' },
+  { id: 'checkout', label: 'Check-out', subtitle: 'Registro de salida y liquidación de la cuenta del huésped.' },
+  { id: 'lista_espera', label: 'Sobreventa / Espera', subtitle: 'Solicitudes en espera por falta de disponibilidad.' },
+  { id: 'ocupacion', label: 'Ocupación', subtitle: 'Indicadores de ocupación, tarifa promedio (ADR) y RevPAR.' },
+  { id: 'huespedes', label: 'Huéspedes', subtitle: 'Directorio de huéspedes y datos de contacto.' },
+  { id: 'ia_tarifas', label: 'Tarifa dinámica y No-Show', subtitle: 'Ajuste sugerido de precios según la ocupación y riesgo de no-show por reserva.' },
 ];
 
 const m1Ui = {
   roomSearch: '',
   roomTypeFilter: 'Todos',
-  resSearch: '',
-  statusFilter: 'Todas',
   dispIn: TODAY,
-  dispOut: '2026-11-22',
+  dispOut: new Date(Date.parse(TODAY) + 7 * 86_400_000).toISOString().slice(0, 10),
   dispType: 'Todos',
-  guestSearch: '',
   checkInRoomOverride: {},
+  checkinSearch: '',
+  checkoutSearch: '',
 };
 
 export function renderReservasModule() {
   const root = parseHtmlTemplate(moduleShellHtml);
   const headerSlot = getRef(root, 'header-slot');
-  const tabsSlot = getRef(root, 'tabs-slot');
   const bodySlot = getRef(root, 'body-slot');
 
   function getStatusVariant(status) {
@@ -154,20 +156,20 @@ export function renderReservasModule() {
     if (!state) return;
     const defaultRoom = state.rooms.find((r) => r.commercialStatus === 'Disponible') || state.rooms[0];
     const formState = {
-      guestId: state.guests[0]?.id || '',
+      guestId: '',
       roomId: defaultRoom?.id || '',
       checkInDate: TODAY,
       checkOutDate: new Date(Date.parse(TODAY) + 86_400_000).toISOString().slice(0, 10),
       adults: 2,
       children: 0,
-      channel: 'Directo Web',
-      nightlyRate: defaultRoom?.baseRate || 340,
+      channel: '',
+      nightlyRate: defaultRoom?.baseRate || '',
       specialRequests: '',
     };
 
     openModal({
       title: 'Nueva Reserva de Alojamiento',
-      subtitle: 'Valida automáticamente cruces de fechas. Si hay conflicto, deriva a Sobreventa / Lista de Espera.',
+      subtitle: 'Registra la reserva de una habitación para el rango de fechas indicado.',
       size: 'lg',
       renderBody: (close) => {
         const form = cloneModal('modal-reserva');
@@ -181,7 +183,8 @@ export function renderReservasModule() {
         const children = getRef(form, 'children');
         const reqs = getRef(form, 'specialRequests');
 
-        mount(guestSel, state.guests.map((g) => h('option', { value: g.id, selected: formState.guestId === g.id }, `${g.fullName} (${g.loyaltyTier})`)));
+        const guestPicker = GuestPicker({ source: 'huespedes', onSelect: (g) => erpStore.ensureGuest(g) });
+        mount(guestSel, guestPicker);
         mount(roomSel, state.rooms.map((rm) => h('option', { value: rm.id, selected: formState.roomId === rm.id }, `Hab. ${rm.number} · ${rm.type} (${rm.commercialStatus} / ${rm.housekeepingStatus})`)));
 
         inDate.value = formState.checkInDate;
@@ -201,8 +204,12 @@ export function renderReservasModule() {
         getRef(form, 'cancel-btn')?.addEventListener('click', close);
         form.addEventListener('submit', (e) => {
           e.preventDefault();
+          if (!guestPicker.getValue()) {
+            erpStore.pushToast({ title: 'Falta el huésped', detail: 'Busca y selecciona al huésped titular de la reserva.', type: 'warning' });
+            return;
+          }
           erpStore.createReservation({
-            guestId: guestSel.value,
+            guestId: guestPicker.getValue(),
             roomId: roomSel.value,
             checkInDate: inDate.value,
             checkOutDate: outDate.value,
@@ -389,33 +396,37 @@ export function renderReservasModule() {
 
   function openWaitlistModal() {
     openModal({
-      title: 'Nuevo Registro en Sobreventa / Lista de Espera',
+      title: 'Nueva solicitud en lista de espera',
+      subtitle: 'Registra a un huésped que espera disponibilidad de un tipo de habitación.',
       renderBody: (close) => {
         const form = cloneModal('modal-espera');
-        const guestName = getRef(form, 'guestName');
-        const contact = getRef(form, 'contact');
         const roomType = getRef(form, 'roomType');
-        const conflictType = getRef(form, 'conflictType');
         const checkInDate = getRef(form, 'checkInDate');
         const checkOutDate = getRef(form, 'checkOutDate');
+        const picker = GuestPicker({ source: 'huespedes', onSelect: (g) => erpStore.ensureGuest(g) });
+        mount(getRef(form, 'guestPicker'), picker);
 
-        roomType.value = 'Suite Junior';
+        const types = erpStore.state?.catalogs?.roomTypes ?? [];
+        mount(roomType, types.map((t) => h('option', { value: t.name }, t.name)));
         checkInDate.value = TODAY;
         checkOutDate.value = new Date(Date.parse(TODAY) + 86_400_000).toISOString().slice(0, 10);
 
         getRef(form, 'cancel-btn')?.addEventListener('click', close);
-        form.addEventListener('submit', (e) => {
+        form.addEventListener('submit', async (e) => {
           e.preventDefault();
-          if (!guestName.value.trim()) return;
-          erpStore.createWaitlistEntry({
-            guestName: guestName.value,
-            contact: contact.value,
+          const guest = picker.getSelected();
+          if (!guest) {
+            erpStore.pushToast({ title: 'Falta el huésped', detail: 'Busca y selecciona al huésped.', type: 'warning' });
+            return;
+          }
+          const res = await erpStore.createWaitlistEntry({
+            guestId: guest.id,
+            guestName: guest.fullName,
             roomType: roomType.value,
-            conflictType: conflictType.value,
             checkInDate: checkInDate.value,
             checkOutDate: checkOutDate.value,
           });
-          close();
+          if (res?.ok) close();
         });
         return form;
       },
@@ -423,6 +434,7 @@ export function renderReservasModule() {
   }
 
   function renderContent() {
+    setActivePagedList(null); // cada pantalla paginada se vuelve a enlazar al dibujarse
     const state = erpStore.state;
     const currentUser = erpStore.currentUser;
     const canViewFullPII = erpStore.canViewFullPII;
@@ -433,6 +445,7 @@ export function renderReservasModule() {
     const defaultTab = erpStore.getDefaultTab('m1') || visibleTabs[0]?.id || 'habitaciones';
     const requestedTab = route.tab || defaultTab;
     const activeTab = visibleTabs.some((t) => t.id === requestedTab) ? requestedTab : defaultTab;
+    const activeMeta = M1_TABS.find((t) => t.id === activeTab);
     const isTabDenied = Boolean(route.tab && !erpStore.canViewTab('m1', route.tab));
     const canEditCurrentTab = erpStore.canEditTab('m1', activeTab);
 
@@ -599,39 +612,22 @@ export function renderReservasModule() {
     } else if (activeTab === 'reservas') {
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.reservas);
       tabBody = view;
-      const tableWrap = getRef(tabBody, 'table-wrap');
+      // Historial completo, paginado desde el servidor (con búsqueda, estado y fechas).
+      const list = getPagedList('m1.reservas', { path: '/m1/reservas', map: mapReservations, pageSize: 20 });
 
-      const renderReservasRows = () => {
-        const q = m1Ui.resSearch.trim().toLowerCase();
-        const filtered = state.reservations.filter((r) => {
-          const g = guestById.get(r.guestId);
-          const rm = roomById.get(r.roomId);
-          const matchStatus = m1Ui.statusFilter === 'Todas' || r.status === m1Ui.statusFilter;
-          const matchSearch =
-            !q ||
-            r.code.toLowerCase().includes(q) ||
-            (g?.fullName || '').toLowerCase().includes(q) ||
-            (rm?.number || '').includes(q);
-          return matchStatus && matchSearch;
-        });
-
-        if (filtered.length === 0) {
-          mount(tableWrap, EmptyState({ iconName: 'calendar', title: 'Sin reservas coincidentes', description: 'Intenta con otro filtro de estado o búsqueda.' }));
-          return;
-        }
+      const renderReservasTable = (rows) => {
         const tbl = clone('tabla-reservas');
         mountRef(
           tbl,
           'tbody',
-          filtered.map((r) => {
-            const g = guestById.get(r.guestId);
+          rows.map((r) => {
             const rm = roomById.get(r.roomId);
             const tr = clone('fila-reserva');
             setText(tr, 'code', r.code);
             setText(tr, 'channel', r.channel);
-            setText(tr, 'guest', g?.fullName || '—');
+            setText(tr, 'guest', r.guestName || '—');
             setText(tr, 'pax', `${r.adults} ad.${r.children > 0 ? ` · ${r.children} niños` : ''}`);
-            setText(tr, 'room', rm ? `Hab. ${rm.number} · ${rm.type}` : '—');
+            setText(tr, 'room', rm ? `Hab. ${rm.number} · ${rm.type}` : (r.roomIds?.length ? `Hab. ${r.roomIds.map((id) => roomById.get(id)?.number || id).join(', ')}` : '—'));
             setText(tr, 'stay', `${r.checkInDate} → ${r.checkOutDate} (${r.nights}n)`);
             setText(tr, 'total', formatCurrency(r.totalAmount));
             mountRef(tr, 'status', StatusText({ label: r.status, variant: getStatusVariant(r.status) }));
@@ -652,27 +648,32 @@ export function renderReservasModule() {
             return tr;
           })
         );
-        mount(tableWrap, tbl);
+        return tbl;
       };
 
-      const statusSel = getRef(tabBody, 'status-select');
-      if (statusSel) {
-        statusSel.value = m1Ui.statusFilter;
-        statusSel.addEventListener('change', (e) => {
-          m1Ui.statusFilter = e.target.value;
-          renderReservasRows();
-        });
-      }
-
-      mountRef(tabBody, 'search-slot', SearchInput({
-        value: m1Ui.resSearch,
-        placeholder: 'Buscar código, huésped o habitación...',
-        onChange: (v) => {
-          m1Ui.resSearch = v;
-          renderReservasRows();
+      bindPagedView({
+        key: 'm1.reservas',
+        list,
+        filtersSlot: getRef(tabBody, 'filters-slot'),
+        bodySlot: getRef(tabBody, 'table-wrap'),
+        footerSlot: getRef(tabBody, 'footer-slot'),
+        filters: {
+          searchPlaceholder: 'Buscar código, huésped o habitación…',
+          dates: true,
+          statusOptions: [
+            { value: '', label: 'Todos los estados' },
+            { value: 'CONFIRMADA', label: 'Confirmada' },
+            { value: 'EN_CURSO', label: 'Check-in (en curso)' },
+            { value: 'FINALIZADA,CHECK_OUT', label: 'Check-out (finalizada)' },
+            { value: 'PENDIENTE', label: 'Pendiente' },
+            { value: 'CANCELADA', label: 'Cancelada' },
+            { value: 'NO_SHOW', label: 'No-Show' },
+          ],
         },
-      }));
-      renderReservasRows();
+        renderBody: renderReservasTable,
+        empty: { iconName: 'calendar', title: 'Sin reservas', description: 'Aún no hay reservas registradas.' },
+        noMatch: { iconName: 'calendar', title: 'Sin reservas coincidentes', description: 'Prueba con otra búsqueda, estado o rango de fechas.' },
+      });
     } else if (activeTab === 'tarifas') {
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.tarifas);
       tabBody = view;
@@ -681,10 +682,10 @@ export function renderReservasModule() {
         mountRef(tabBody, 'plus-icon', icon('plus', 'w-3.5'));
         getRef(tabBody, 'new-rate-btn')?.addEventListener('click', () => openRateModal(null));
       }
-      mountRef(
-        tabBody,
-        'grid',
-        state.ratePlans.map((rp) => {
+      const rateList = getPagedList('m1.tarifas', { path: '/m1/tarifas', map: mapRatePlans, pageSize: 20 });
+      const renderRateCards = (rows) =>
+        h('div', { className: 'grid-2' },
+          ...rows.map((rp) => {
           const card = clone('card-tarifa');
           setText(card, 'kicker', `${rp.roomType} · Temporada ${rp.season}`);
           setText(card, 'name', rp.name);
@@ -710,23 +711,49 @@ export function renderReservasModule() {
             getRef(card, 'edit-btn')?.addEventListener('click', () => openRateModal(rp));
           }
           return card;
-        })
-      );
+        }));
+
+      bindPagedView({
+        key: 'm1.tarifas',
+        list: rateList,
+        filtersSlot: getRef(tabBody, 'filters-slot'),
+        bodySlot: getRef(tabBody, 'grid-wrap'),
+        footerSlot: getRef(tabBody, 'footer-slot'),
+        filters: {
+          searchPlaceholder: 'Buscar tarifa, tipo, canal o temporada…',
+          statusOptions: [
+            { value: '', label: 'Todas' },
+            { value: 'ACTIVA', label: 'Activas' },
+            { value: 'INACTIVA', label: 'Inactivas' },
+          ],
+        },
+        renderBody: renderRateCards,
+        empty: { iconName: 'receipt', title: 'Sin tarifas', description: 'Aún no hay tarifas registradas.' },
+        noMatch: { iconName: 'receipt', title: 'Sin tarifas coincidentes', description: 'Prueba con otra búsqueda o estado.' },
+      });
     } else if (activeTab === 'checkin') {
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.checkin);
       tabBody = view;
-      const pending = state.reservations.filter((r) => r.status === 'Confirmada' || r.status === 'Pendiente');
-      if (pending.length === 0) {
+      const ciQ = m1Ui.checkinSearch.trim().toLowerCase();
+      const pendingAll = state.reservations.filter((r) => r.status === 'Confirmada' || r.status === 'Pendiente');
+      const pending = ciQ
+        ? pendingAll.filter((r) => r.code.toLowerCase().includes(ciQ) || (r.guestName || '').toLowerCase().includes(ciQ) || r.roomIds?.some((id) => (roomById.get(id)?.number || '').includes(ciQ)))
+        : pendingAll;
+      const ciPager = localPager('m1.checkin', pending, renderContent, 10);
+      if (pendingAll.length === 0) {
         mountRef(tabBody, 'content', EmptyState({ iconName: 'logIn', title: 'Sin ingresos pendientes', description: 'Todas las reservas confirmadas ya realizaron check-in.' }));
       } else {
         const readyOptions = state.rooms.filter((opt) => opt.commercialStatus === 'Disponible' && (opt.housekeepingStatus === 'Inspeccionada' || opt.housekeepingStatus === 'Limpia'));
         mountRef(
           tabBody,
           'content',
+          h('div', { className: 'stack-md' },
+            h('div', null, SearchInput({ value: m1Ui.checkinSearch, placeholder: 'Buscar código, huésped o habitación…', focusId: 'm1-checkin-search', onChange: (v) => { m1Ui.checkinSearch = v; resetLocalPager('m1.checkin'); renderContent(); } })),
+            pending.length === 0 ? EmptyState({ iconName: 'search', title: 'Sin coincidencias', description: 'Prueba con otra búsqueda.' }) : null,
           h(
             'div',
             { className: 'grid-2' },
-            pending.map((r) => {
+            ciPager.slice.map((r) => {
               const g = guestById.get(r.guestId);
               const selectedRoomId = m1Ui.checkInRoomOverride[r.id] || r.roomId;
               const rm = roomById.get(selectedRoomId);
@@ -771,23 +798,33 @@ export function renderReservasModule() {
               }
               return card;
             })
+          ),
+          h('div', { className: 'card' }, ciPager.footer)
           )
         );
       }
     } else if (activeTab === 'checkout') {
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.checkout);
       tabBody = view;
-      const activeStays = state.reservations.filter((r) => r.status === 'Check-in');
-      if (activeStays.length === 0) {
+      const coQ = m1Ui.checkoutSearch.trim().toLowerCase();
+      const activeAll = state.reservations.filter((r) => r.status === 'Check-in');
+      const activeStays = coQ
+        ? activeAll.filter((r) => r.code.toLowerCase().includes(coQ) || (r.guestName || '').toLowerCase().includes(coQ) || r.roomIds?.some((id) => (roomById.get(id)?.number || '').includes(coQ)))
+        : activeAll;
+      const coPager = localPager('m1.checkout', activeStays, renderContent, 10);
+      if (activeAll.length === 0) {
         mountRef(tabBody, 'content', EmptyState({ iconName: 'logOut', title: 'Sin estadías activas para salida', description: 'No hay habitaciones ocupadas con check-in vigente.' }));
       } else {
         mountRef(
           tabBody,
           'content',
+          h('div', { className: 'stack-md' },
+            h('div', null, SearchInput({ value: m1Ui.checkoutSearch, placeholder: 'Buscar código, huésped o habitación…', focusId: 'm1-checkout-search', onChange: (v) => { m1Ui.checkoutSearch = v; resetLocalPager('m1.checkout'); renderContent(); } })),
+            activeStays.length === 0 ? EmptyState({ iconName: 'search', title: 'Sin coincidencias', description: 'Prueba con otra búsqueda.' }) : null,
           h(
             'div',
             { className: 'grid-2' },
-            activeStays.map((r) => {
+            coPager.slice.map((r) => {
               const g = guestById.get(r.guestId);
               const rm = roomById.get(r.roomId);
               const folio = folioByResId.get(r.id);
@@ -818,6 +855,8 @@ export function renderReservasModule() {
               }
               return card;
             })
+          ),
+          h('div', { className: 'card' }, coPager.footer)
           )
         );
       }
@@ -829,10 +868,13 @@ export function renderReservasModule() {
         mountRef(tabBody, 'plus-icon', icon('plus', 'w-3.5'));
         getRef(tabBody, 'new-waitlist-btn')?.addEventListener('click', openWaitlistModal);
       }
-      mountRef(
-        tabBody,
-        'tbody',
-        state.waitlist.map((w) => {
+      const waitList = getPagedList('m1.espera', { path: '/m1/lista-espera', map: mapWaitlist, pageSize: 20, filters: { status: 'PENDIENTE' } });
+      const renderWaitTable = (rows) => {
+        const tbl = clone('tabla-espera');
+        mountRef(
+          tbl,
+          'tbody',
+          rows.map((w) => {
           const tr = clone('fila-espera');
           mountRef(tr, 'conflict-badge', StatusText({ label: w.conflictType, variant: w.conflictType === 'Sobreventa' ? 'danger' : 'warning' }));
           setText(tr, 'created-at', w.createdAt || TODAY);
@@ -865,7 +907,30 @@ export function renderReservasModule() {
           );
           return tr;
         })
-      );
+        );
+        return tbl;
+      };
+
+      bindPagedView({
+        key: 'm1.espera',
+        list: waitList,
+        filtersSlot: getRef(tabBody, 'filters-slot'),
+        bodySlot: getRef(tabBody, 'table-wrap'),
+        footerSlot: getRef(tabBody, 'footer-slot'),
+        filters: {
+          searchPlaceholder: 'Buscar huésped o tipo de habitación…',
+          statusOptions: [
+            { value: '', label: 'Todos los estados' },
+            { value: 'PENDIENTE', label: 'Pendiente' },
+            { value: 'ATENDIDA', label: 'Atendida' },
+            { value: 'CANCELADA', label: 'Cancelada' },
+            { value: 'VENCIDA', label: 'Vencida' },
+          ],
+        },
+        renderBody: renderWaitTable,
+        empty: { iconName: 'clock', title: 'Sin solicitudes en espera', description: 'No hay solicitudes registradas.' },
+        noMatch: { iconName: 'clock', title: 'Sin solicitudes coincidentes', description: 'Prueba con otro estado o búsqueda.' },
+      });
     } else if (activeTab === 'ocupacion') {
       const occupiedCount = state.rooms.filter((r) => r.commercialStatus === 'Ocupada').length;
       const totalCount = Math.max(1, state.rooms.length);
@@ -879,13 +944,8 @@ export function renderReservasModule() {
       const blockedCount = state.rooms.filter((r) => r.housekeepingStatus === 'Fuera de servicio' || r.commercialStatus === 'Bloqueada').length;
       const freeCommercial = state.rooms.filter((r) => r.commercialStatus === 'Disponible').length;
 
-      const categories = [
-        { match: 'Estándar', label: 'Estándar' },
-        { match: 'Superior', label: 'Superior' },
-        { match: 'Deluxe Vista Mar', label: 'Deluxe Mar' },
-        { match: 'Suite Junior', label: 'Suite Junior' },
-        { match: 'Suite Presidencial', label: 'Presid.' },
-      ];
+      // Tipos de habitación reales (los que existen en las habitaciones cargadas).
+      const categories = [...new Set(state.rooms.map((r) => r.type).filter(Boolean))].map((t) => ({ match: t, label: t }));
       const byType = categories.map((cat) => {
         const subset = state.rooms.filter((r) => r.type === cat.match);
         const comprometidas = subset.filter((r) => r.commercialStatus === 'Ocupada' || r.commercialStatus === 'Reservada').length;
@@ -930,30 +990,21 @@ export function renderReservasModule() {
         getRef(tabBody, 'new-guest-btn')?.addEventListener('click', () => openGuestModal(null));
       }
 
-      const renderGuestsTable = () => {
-        const q = m1Ui.guestSearch.trim().toLowerCase();
-        const filtered = state.guests.filter(
-          (g) =>
-            !q ||
-            g.fullName.toLowerCase().includes(q) ||
-            (g.company || '').toLowerCase().includes(q) ||
-            (g.documentNumber || '').toLowerCase().includes(q) ||
-            g.segment.toLowerCase().includes(q)
-        );
+      const guestList = getPagedList('m1.huespedes', { path: '/m1/huespedes', map: mapGuests, pageSize: 20 });
+      const renderGuestsTable = (rows) => {
+        const tbl = clone('tabla-huespedes');
+        if (canEditCurrentTab) setVisible(tbl, 'actions-th', true);
         mountRef(
-          tabBody,
+          tbl,
           'tbody',
-          filtered.map((g) => {
+          rows.map((g) => {
             const tr = clone('fila-huesped');
             setText(tr, 'name', g.fullName);
-            setText(tr, 'company', g.company || g.nationality || '—');
+            setText(tr, 'company', g.company || '—');
             setText(tr, 'doc', `${g.documentType} ${maskDocument(g.documentNumber, canViewFullPII)}`);
             setText(tr, 'email', maskEmail(g.email, canViewFullPII));
             setText(tr, 'phone', maskPhone(g.phone, canViewFullPII));
-            setText(tr, 'segment', g.segment);
-            setText(tr, 'loyalty', g.loyaltyTier);
-            setText(tr, 'stays', `${g.totalStays} estadías`);
-            setText(tr, 'spent', formatCurrency(g.totalSpent || 0));
+            setText(tr, 'nationality', g.nationality || '—');
             mountRef(tr, 'privacy', StatusText({ label: g.privacyConsentISO27701 ? 'Consentido' : 'Pendiente', variant: g.privacyConsentISO27701 ? 'success' : 'warning' }));
             if (canEditCurrentTab) {
               setVisible(tr, 'action', true);
@@ -962,17 +1013,20 @@ export function renderReservasModule() {
             return tr;
           })
         );
+        return tbl;
       };
 
-      mountRef(tabBody, 'search-slot', SearchInput({
-        value: m1Ui.guestSearch,
-        placeholder: 'Buscar huésped, documento o empresa...',
-        onChange: (v) => {
-          m1Ui.guestSearch = v;
-          renderGuestsTable();
-        },
-      }));
-      renderGuestsTable();
+      bindPagedView({
+        key: 'm1.huespedes',
+        list: guestList,
+        filtersSlot: getRef(tabBody, 'filters-slot'),
+        bodySlot: getRef(tabBody, 'table-wrap'),
+        footerSlot: getRef(tabBody, 'footer-slot'),
+        filters: { searchPlaceholder: 'Buscar nombre, documento, correo o empresa…' },
+        renderBody: renderGuestsTable,
+        empty: { iconName: 'users', title: 'Sin huéspedes', description: 'Aún no hay huéspedes registrados.' },
+        noMatch: { iconName: 'users', title: 'Sin huéspedes coincidentes', description: 'Prueba con otra búsqueda.' },
+      });
     } else if (activeTab === 'ia_tarifas') {
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.ia_tarifas);
       tabBody = view;
@@ -1036,7 +1090,10 @@ export function renderReservasModule() {
       );
 
       mountRef(tabBody, 'noshow-icon', icon('alertTriangle', 'w-4 text-warning'));
-      const upcoming = state.reservations.filter((r) => r.status === 'Confirmada' || r.status === 'Pendiente');
+      const upcomingAll = state.reservations.filter((r) => r.status === 'Confirmada' || r.status === 'Pendiente');
+      const nsPager = localPager('m1.noshow', upcomingAll, renderContent, 10);
+      const upcoming = nsPager.slice;
+      mountRef(tabBody, 'noshow-footer', nsPager.footer);
       mountRef(
         tabBody,
         'noshow-list',
@@ -1088,30 +1145,12 @@ export function renderReservasModule() {
       );
     }
 
-    const tabCounts = {
-      habitaciones: state.rooms.length,
-      reservas: state.reservations.length,
-      tarifas: state.ratePlans.length,
-      checkin: state.reservations.filter((r) => r.status === 'Confirmada').length,
-      checkout: state.reservations.filter((r) => r.status === 'Check-in').length,
-      lista_espera: state.waitlist.filter((w) => w.status === 'Pendiente').length,
-      huespedes: state.guests.length,
-    };
-
-    const barTabs = visibleTabs.map((t) => ({
-      id: t.id,
-      label: t.label,
-      ...(tabCounts[t.id] !== undefined ? { count: tabCounts[t.id] } : {}),
-    }));
-
     mount(
       headerSlot,
       ModuleHeader({
-        moduleNumber: canEditCurrentTab
-          ? 'Módulo 01 · Operaciones Front Desk'
-          : 'Módulo 01 · Operaciones Front Desk · Modo consulta (solo lectura)',
-        title: 'Reservas y Recepción',
-        subtitle: 'Gestión de habitaciones, disponibilidad real sincronizada con Housekeeping, reservas, tarifas, check-in/out e IA.',
+        moduleNumber: canEditCurrentTab ? 'Reservas y Recepción' : 'Reservas y Recepción · Solo lectura',
+        title: activeMeta?.label ?? 'Reservas y Recepción',
+        subtitle: activeMeta?.subtitle ?? '',
         actions: canEditCurrentTab
           ? h('div', { className: 'row-wrap' },
               erpStore.canEditTab('m1', 'huespedes')
@@ -1123,16 +1162,6 @@ export function renderReservasModule() {
             )
           : null,
       })
-    );
-    mount(
-      tabsSlot,
-      !isTabDenied && barTabs.length > 0
-        ? SubmoduleBar({
-            tabs: barTabs,
-            activeTab,
-            onChange: (nextTab) => navigateToView('/reservas', nextTab),
-          })
-        : null
     );
     mount(bodySlot, tabBody);
   }

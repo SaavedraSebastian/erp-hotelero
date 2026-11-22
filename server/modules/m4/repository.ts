@@ -1,17 +1,12 @@
 import type { PoolClient } from 'pg';
 import type { PaginationParams } from '../../shared/types/context.ts';
+import { pushDateRange, pushSearchFilter, pushStatusFilter } from '../../shared/pagination/index.ts';
 
 export async function listCuentas(client: PoolClient, params: PaginationParams) {
   const values: unknown[] = [];
   const where: string[] = [];
-  if (params.status) {
-    values.push(params.status);
-    where.push(`c.estado = $${values.length}`);
-  }
-  if (params.search) {
-    values.push(`%${params.search}%`);
-    where.push(`(h.nombres ILIKE $${values.length} OR h.apellidos ILIKE $${values.length} OR hab.numero ILIKE $${values.length})`);
-  }
+  pushStatusFilter(values, where, 'c.estado', params.status);
+  pushSearchFilter(values, where, ['h.nombres', 'h.apellidos', "(h.nombres || ' ' || h.apellidos)", 'hab.numero'], params.search);
   const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
   const countRes = await client.query<{ total: string }>(
     `SELECT COUNT(*)::text AS total
@@ -41,7 +36,7 @@ export async function listCuentas(client: PoolClient, params: PaginationParams) 
      JOIN g1_reservas.huesped h ON h.id_huesped = c.id_huesped
      LEFT JOIN g1_reservas.habitacion hab ON hab.id_habitacion = c.id_habitacion
      ${whereClause}
-     ORDER BY c.fecha_apertura DESC
+     ORDER BY c.fecha_apertura DESC, c.id_cuenta DESC
      LIMIT $${values.length - 1} OFFSET $${values.length}`,
     values
   );
@@ -101,10 +96,9 @@ export async function getCuentaDetalle(client: PoolClient, idCuenta: string) {
 export async function listComprobantes(client: PoolClient, params: PaginationParams) {
   const values: unknown[] = [];
   const where: string[] = [];
-  if (params.status) {
-    values.push(params.status);
-    where.push(`estado = $${values.length}`);
-  }
+  pushStatusFilter(values, where, 'estado', params.status);
+  pushDateRange(values, where, 'fecha_emision', params.fromDate, params.toDate);
+  pushSearchFilter(values, where, ["(serie || '-' || correlativo::text)", 'razon_social_cliente', 'numero_documento_cliente', 'tipo'], params.search);
   const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
   const countRes = await client.query<{ total: string }>(
     `SELECT COUNT(*)::text AS total FROM g4_finanzas.comprobante ${whereClause}`,
@@ -126,7 +120,7 @@ export async function listComprobantes(client: PoolClient, params: PaginationPar
        hash_cpe
      FROM g4_finanzas.comprobante
      ${whereClause}
-     ORDER BY fecha_emision DESC
+     ORDER BY fecha_emision DESC, id_comprobante DESC
      LIMIT $${values.length - 1} OFFSET $${values.length}`,
     values
   );
@@ -137,10 +131,7 @@ export async function listComprobantes(client: PoolClient, params: PaginationPar
 export async function listTurnosCaja(client: PoolClient, params: PaginationParams) {
   const values: unknown[] = [];
   const where: string[] = [];
-  if (params.status) {
-    values.push(params.status);
-    where.push(`t.estado = $${values.length}`);
-  }
+  pushStatusFilter(values, where, 't.estado', params.status);
   const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
   const countRes = await client.query<{ total: string }>(
     `SELECT COUNT(*)::text AS total FROM g4_finanzas.turno_caja t ${whereClause}`,
@@ -178,7 +169,7 @@ export async function listTurnosCaja(client: PoolClient, params: PaginationParam
        FROM g4_finanzas.movimiento_caja m WHERE m.id_turno_caja = t.id_turno_caja
      ) mv
      ${whereClause}
-     ORDER BY t.fecha_apertura DESC
+     ORDER BY t.fecha_apertura DESC, t.id_turno_caja DESC
      LIMIT $${values.length - 1} OFFSET $${values.length}`,
     values
   );
@@ -189,13 +180,15 @@ export async function listTurnosCaja(client: PoolClient, params: PaginationParam
 export async function listGastos(client: PoolClient, params: PaginationParams) {
   const values: unknown[] = [];
   const where: string[] = [];
-  if (params.status) {
-    values.push(params.status);
-    where.push(`g.estado = $${values.length}`);
-  }
+  pushStatusFilter(values, where, 'g.estado', params.status);
+  pushDateRange(values, where, 'g.fecha', params.fromDate, params.toDate);
+  pushSearchFilter(values, where, ['g.concepto', 'g.proveedor', 'g.categoria', 'cc.nombre'], params.search);
   const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
   const countRes = await client.query<{ total: string }>(
-    `SELECT COUNT(*)::text AS total FROM g4_finanzas.gasto g ${whereClause}`,
+    `SELECT COUNT(*)::text AS total
+     FROM g4_finanzas.gasto g
+     JOIN g4_finanzas.centro_costo cc ON cc.id_centro_costo = g.id_centro_costo
+     ${whereClause}`,
     values
   );
   const offset = (params.page - 1) * params.pageSize;
@@ -211,7 +204,7 @@ export async function listGastos(client: PoolClient, params: PaginationParams) {
      FROM g4_finanzas.gasto g
      JOIN g4_finanzas.centro_costo cc ON cc.id_centro_costo = g.id_centro_costo
      ${whereClause}
-     ORDER BY g.fecha DESC
+     ORDER BY g.fecha DESC, g.id_gasto DESC
      LIMIT $${values.length - 1} OFFSET $${values.length}`,
     values
   );
@@ -222,13 +215,14 @@ export async function listGastos(client: PoolClient, params: PaginationParams) {
 export async function listCuentasPorCobrar(client: PoolClient, params: PaginationParams) {
   const values: unknown[] = [];
   const where: string[] = [];
-  if (params.status) {
-    values.push(params.status);
-    where.push(`cxc.estado = $${values.length}`);
-  }
+  pushStatusFilter(values, where, 'cxc.estado', params.status);
+  pushSearchFilter(values, where, ['cxc.razon_social_cliente', "(cb.serie || '-' || cb.correlativo::text)", 'cb.numero_documento_cliente'], params.search);
   const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
   const countRes = await client.query<{ total: string }>(
-    `SELECT COUNT(*)::text AS total FROM g4_finanzas.cuenta_por_cobrar cxc ${whereClause}`,
+    `SELECT COUNT(*)::text AS total
+     FROM g4_finanzas.cuenta_por_cobrar cxc
+     LEFT JOIN g4_finanzas.comprobante cb ON cb.id_comprobante = cxc.id_comprobante
+     ${whereClause}`,
     values
   );
   const offset = (params.page - 1) * params.pageSize;
@@ -248,7 +242,7 @@ export async function listCuentasPorCobrar(client: PoolClient, params: Paginatio
      LEFT JOIN g4_finanzas.comprobante cb ON cb.id_comprobante = cxc.id_comprobante
      LEFT JOIN g4_finanzas.cuenta cu ON cu.id_cuenta = cxc.id_cuenta
      ${whereClause}
-     ORDER BY cxc.fecha_vencimiento ASC
+     ORDER BY cxc.fecha_vencimiento ASC, cxc.id_cuenta_por_cobrar ASC
      LIMIT $${values.length - 1} OFFSET $${values.length}`,
     values
   );

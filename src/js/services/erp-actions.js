@@ -314,9 +314,9 @@ export function createWriteActions(ctx) {
     },
 
     async createWaitlistEntry(entry) {
-      const guest = (s().guests ?? []).find((g) => sameName(g.fullName, entry.guestName));
+      const guest = (entry.guestId && guestById(entry.guestId)) || (s().guests ?? []).find((g) => sameName(g.fullName, entry.guestName));
       if (!guest) {
-        return fail('Huésped no registrado', `No existe un huésped llamado "${entry.guestName}". Regístralo primero en la pestaña Huéspedes.`);
+        return fail('Huésped no registrado', 'Selecciona un huésped existente o regístralo primero en la pestaña Huéspedes.');
       }
       const room = (s().rooms ?? []).find((r) => sameName(r.type, entry.roomType));
       if (!room) return fail('Tipo de habitación inválido', `No existe el tipo "${entry.roomType}".`);
@@ -497,46 +497,27 @@ export function createWriteActions(ctx) {
             motivo_rechazo: approved ? undefined : input.observations || 'No conforme según lista de verificación',
             lista_verificacion: checklist,
           }),
-        { refreshKeys: ['ordenesLimpieza', 'habitaciones', 'inspecciones'] }
+        { refreshKeys: ['ordenesLimpieza', 'habitaciones'] }
       );
     },
 
     async createIncident(input) {
-      if (!isNumericId(input.roomId)) {
-        return fail('Falta la habitación', 'La incidencia debe asociarse a una habitación registrada.');
+      if (!isNumericId(input.roomId) && !isNumericId(input.assetId)) {
+        return fail('Falta la ubicación', 'La incidencia debe asociarse a una habitación o a un equipo registrado.');
       }
       const criticidad = /alta|urgente|cr[ií]tica/i.test(input.priority) ? 'Alta' : /baja/i.test(input.priority) ? 'Baja' : 'Media';
+      const origen = ['Personal', 'Supervisor', 'Huésped'].includes(input.origin) ? input.origin : 'Personal';
       return run(
         'Incidencia registrada',
         () =>
           post('/m2/incidencias', {
-            id_habitacion: input.roomId,
-            descripcion: input.description,
+            id_habitacion: isNumericId(input.roomId) ? input.roomId : undefined,
+            id_activo: isNumericId(input.assetId) ? input.assetId : undefined,
+            descripcion: String(input.description ?? '').trim().slice(0, 300),
             criticidad,
-            origen: 'Personal',
+            origen,
           }),
-        { refreshKeys: ['incidencias'], detail: `Criticidad ${criticidad}` }
-      );
-    },
-
-    async createWorkOrderFromIncident(incidentId, staffId, _estimatedCost, description) {
-      const cc = (s().costCenters ?? []).find((c) => /manten/i.test(c.name));
-      if (!cc) {
-        return fail('Falta el centro de costo', 'La orden de trabajo exige un centro de costo de Mantenimiento y la API aún no expone el catálogo. Registra primero un gasto de ese centro.');
-      }
-      if (!isNumericId(incidentId)) return fail('Incidencia inválida', 'No se pudo identificar la incidencia.');
-      return run(
-        'Orden de trabajo generada',
-        () =>
-          post('/m2/ordenes-trabajo', {
-            tipo_ot: 'Correctiva',
-            numero_incidencia: incidentId,
-            id_tecnico: isNumericId(staffId) ? staffId : null,
-            id_centro_costo: cc.id,
-            descripcion_tarea: description,
-            prioridad: 'Media',
-          }),
-        { refreshKeys: ['ordenesTrabajo', 'incidencias'], detail: `Centro de costo: ${cc.name}` }
+        { refreshKeys: ['incidencias'], detail: `Prioridad ${criticidad}` }
       );
     },
 

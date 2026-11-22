@@ -40,9 +40,14 @@ export async function updateHuespedService(
   return updated;
 }
 
-export async function getTarifasService(ctx: AuthContext) {
-  const rows = await withReadOnlyClient((client) => repo.listTarifas(client), ctx);
+export async function getTarifasService(ctx: AuthContext, opts: { soloVigentes?: boolean } = {}) {
+  const rows = await withReadOnlyClient((client) => repo.listTarifas(client, opts), ctx);
   return { data: rows };
+}
+
+export async function getTarifasPaginadoService(ctx: AuthContext, params: PaginationParams, soloVigentes = false) {
+  const { rows, total } = await withReadOnlyClient((client) => repo.listTarifasPaginado(client, params, soloVigentes), ctx);
+  return buildPaginatedResponse(rows, total, params.page, params.pageSize);
 }
 
 export async function getReservasService(ctx: AuthContext, params: PaginationParams) {

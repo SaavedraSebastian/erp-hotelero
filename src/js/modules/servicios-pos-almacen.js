@@ -26,6 +26,9 @@ import iaDemandaHtml from '../../html/modules/servicios/ia-demanda.html?raw';
 import { formatCurrency } from '../utils/formatters.js';
 import { getRoute, navigateToView } from '../core/router.js';
 import { erpStore } from '../core/store.js';
+import { bindPagedContainer } from '../components/paged-view.js';
+import { getPagedList, setActivePagedList } from '../services/paged-list.js';
+import { mapComandaRows, mapConsumoRows, mapPurchaseOrderRows } from '../services/erp-mappers.js';
 import { TODAY } from '../data/empty-state.js';
 import {
   AccessDeniedCard,
@@ -35,7 +38,6 @@ import {
   SearchInput,
   StatTile,
   StatusText,
-  SubmoduleBar,
   openModal,
 } from '../components/ui-components.js';
 
@@ -56,17 +58,17 @@ const VIEW_HTML = {
 };
 
 const M3_TABS = [
-  { id: 'productos', label: 'Productos', subtitle: 'Gestión de carta POS, precios de venta, costos unitarios y márgenes.' },
-  { id: 'servicios', label: 'Servicios', subtitle: 'Servicios complementarios de Spa, Lavandería, Cochera, Traslados y Bar.' },
-  { id: 'pos', label: 'POS Ventas', subtitle: 'Terminal de ventas conectado al inventario y al Folio del huésped.' },
-  { id: 'restaurante', label: 'Restaurante', subtitle: 'Plano de mesas y monitor en tiempo real de comandas y pedidos.' },
-  { id: 'room_service', label: 'Room Service', subtitle: 'Registro de pedidos a habitación y seguimiento de entregas.' },
-  { id: 'minibar', label: 'Minibar', subtitle: 'Reposición y cargos directos de consumos de minibar.' },
-  { id: 'servicios_comp', label: 'Serv. Complementarios', subtitle: 'Registro y tarifario de Spa, Lavandería, Cochera y Traslados.' },
-  { id: 'inventario', label: 'Inventario', subtitle: 'Stock central de almacén, solicitudes internas, vencimientos y Kardex.' },
-  { id: 'proveedores', label: 'Proveedores y Compras', subtitle: 'Órdenes de compra, recepción de mercadería y proveedores homologados.' },
-  { id: 'recetas', label: 'Recetario', subtitle: 'Estandarización de ingredientes descontados automáticamente al vender en POS.' },
-  { id: 'ia_demanda', label: 'IA Demanda y Stock', subtitle: 'Recomendaciones de reposición por ocupación y pronóstico de abastecimiento.' },
+  { id: 'productos', label: 'Productos', subtitle: 'Carta de productos con precios de venta, costos y márgenes.' },
+  { id: 'servicios', label: 'Servicios', subtitle: 'Servicios complementarios: spa, lavandería, cochera, traslados y bar.' },
+  { id: 'pos', label: 'POS Ventas', subtitle: 'Registro de ventas con cargo a la cuenta del huésped o pago directo.' },
+  { id: 'restaurante', label: 'Restaurante', subtitle: 'Mesas y seguimiento de comandas.' },
+  { id: 'room_service', label: 'Room Service', subtitle: 'Pedidos a habitación y seguimiento de entregas.' },
+  { id: 'minibar', label: 'Minibar', subtitle: 'Consumos de minibar y su cargo a la cuenta.' },
+  { id: 'servicios_comp', label: 'Serv. Complementarios', subtitle: 'Registro y tarifario de servicios complementarios.' },
+  { id: 'inventario', label: 'Inventario', subtitle: 'Stock de almacén, solicitudes internas y vencimientos.' },
+  { id: 'proveedores', label: 'Proveedores y Compras', subtitle: 'Proveedores, órdenes de compra y recepción de mercadería.' },
+  { id: 'recetas', label: 'Recetario', subtitle: 'Ingredientes por plato que se descuentan del stock al vender.' },
+  { id: 'ia_demanda', label: 'IA Demanda y Stock', subtitle: 'Recomendaciones de reposición según la ocupación.' },
 ];
 
 const m3Ui = {
@@ -84,7 +86,6 @@ const m3Ui = {
 export function renderServiciosPOSModule() {
   const root = parseHtmlTemplate(moduleShellHtml);
   const headerSlot = getRef(root, 'header-slot');
-  const tabsSlot = getRef(root, 'tabs-slot');
   const bodySlot = getRef(root, 'body-slot');
 
   function getStatusVariant(status) {
@@ -420,6 +421,7 @@ export function renderServiciosPOSModule() {
   }
 
   function renderContent() {
+    setActivePagedList(null); // cada pantalla paginada se vuelve a enlazar al dibujarse
     const state = erpStore.state;
     const currentUser = erpStore.currentUser;
     if (!state || !currentUser) return;
@@ -429,6 +431,7 @@ export function renderServiciosPOSModule() {
     const defaultTab = erpStore.getDefaultTab('m3') || visibleTabs[0]?.id || 'productos';
     const requestedTab = route.tab || defaultTab;
     const activeTab = visibleTabs.some((t) => t.id === requestedTab) ? requestedTab : defaultTab;
+    const activeMeta = M3_TABS.find((t) => t.id === activeTab);
     const isTabDenied = Boolean(route.tab && !erpStore.canViewTab('m3', route.tab));
     const canEditCurrentTab = erpStore.canEditTab('m3', activeTab);
 
@@ -701,10 +704,8 @@ export function renderServiciosPOSModule() {
         })
       );
 
-      mountRef(
-        tabBody,
-        'orders-list',
-        state.posOrders.map((ord) => {
+      const renderOrderRows = (rows) =>
+        h('div', null, ...rows.map((ord) => {
           const row = clone('fila-comanda-restaurante');
           const locLabel = [
             ord.source,
@@ -725,10 +726,29 @@ export function renderServiciosPOSModule() {
             );
           }
           return row;
-        })
-      );
+        }));
+      bindPagedContainer({
+        container: getRef(tabBody, 'orders-list'),
+        key: 'm3.comandas',
+        list: getPagedList('m3.comandas', { path: '/m3/comandas', map: mapComandaRows, pageSize: 20 }),
+        filters: {
+          searchPlaceholder: 'Buscar comanda, mesa, habitación o huésped…',
+          dates: true,
+          statusOptions: [
+            { value: '', label: 'Todos los estados' },
+            { value: 'pendiente,en preparación,lista', label: 'Abiertas' },
+            { value: 'pendiente', label: 'Pendiente' },
+            { value: 'en preparación', label: 'Preparando' },
+            { value: 'lista', label: 'Lista' },
+            { value: 'entregada', label: 'Entregada' },
+            { value: 'cancelada', label: 'Cancelada' },
+          ],
+        },
+        renderBody: renderOrderRows,
+        empty: { iconName: 'utensils', title: 'Sin comandas', description: 'Aún no hay comandas registradas.' },
+        noMatch: { iconName: 'utensils', title: 'Sin comandas coincidentes', description: 'Prueba con otro estado, fechas o búsqueda.' },
+      });
     } else if (activeTab === 'room_service') {
-      const orders = state.posOrders.filter((o) => o.source === 'Room Service');
       const rsProducts = state.products.filter((p) => p.available !== false && ['Restaurante', 'Cafetería', 'Bar'].includes(p.category));
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.room_service);
       tabBody = view;
@@ -764,16 +784,8 @@ export function renderServiciosPOSModule() {
         });
       }
 
-      mountRef(
-        tabBody,
-        'orders-list',
-        orders.length === 0
-          ? h('div', { className: 'p-4' }, EmptyState({
-              iconName: 'utensils',
-              title: 'Sin pedidos recientes de Room Service',
-              description: 'Registra un pedido desde el formulario izquierdo para cargarlo a la habitación.',
-            }))
-          : orders.map((ord) => {
+      const renderRoomServiceRows = (rows) =>
+        h('div', null, ...rows.map((ord) => {
               const row = clone('fila-pedido-rs');
               setText(row, 'title', `${ord.code} · Hab. ${ord.roomNumber || '—'} (${ord.guestName || '—'})`);
               setText(row, 'items', `${ord.items.map((i) => `${i.quantity}x ${i.name}`).join(', ')} · ${formatCurrency(ord.total)}`);
@@ -784,10 +796,26 @@ export function renderServiciosPOSModule() {
                 getRef(row, 'deliver-btn').addEventListener('click', () => erpStore.updatePOSOrderStatus(ord.id, 'Entregado'));
               }
               return row;
-            })
-      );
+            }));
+      bindPagedContainer({
+        container: getRef(tabBody, 'orders-list'),
+        key: 'm3.roomservice',
+        list: getPagedList('m3.roomservice', { path: '/m3/comandas?modalidad=' + encodeURIComponent('habitación'), map: mapComandaRows, pageSize: 20 }),
+        filters: {
+          searchPlaceholder: 'Buscar pedido, habitación o huésped…',
+          dates: true,
+          statusOptions: [
+            { value: '', label: 'Todos los estados' },
+            { value: 'pendiente,en preparación,lista', label: 'En curso' },
+            { value: 'entregada', label: 'Entregado' },
+            { value: 'cancelada', label: 'Cancelado' },
+          ],
+        },
+        renderBody: renderRoomServiceRows,
+        empty: { iconName: 'utensils', title: 'Sin pedidos de Room Service', description: 'Registra un pedido desde el formulario para cargarlo a la habitación.' },
+        noMatch: { iconName: 'utensils', title: 'Sin pedidos coincidentes', description: 'Prueba con otro estado, fechas o búsqueda.' },
+      });
     } else if (activeTab === 'minibar') {
-      const orders = state.posOrders.filter((o) => o.source === 'Minibar');
       const miniProducts = state.products.filter((p) => p.available !== false && (p.category === 'Minibar' || p.category === 'Bar'));
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.minibar);
       tabBody = view;
@@ -823,23 +851,26 @@ export function renderServiciosPOSModule() {
         });
       }
 
-      mountRef(
-        tabBody,
-        'orders-list',
-        orders.length === 0
-          ? h('div', { className: 'p-4' }, EmptyState({
-              iconName: 'utensils',
-              title: 'Sin consumos de Minibar registrados',
-              description: 'Registra consumos desde el panel izquierdo.',
-            }))
-          : orders.map((ord) => {
+      const renderMinibarRows = (rows) =>
+        h('div', null, ...rows.map((ord) => {
               const row = clone('fila-pedido-minibar');
               setText(row, 'title', `${ord.code} · Hab. ${ord.roomNumber || '—'}`);
               setText(row, 'items', ord.items.map((i) => `${i.quantity}x ${i.name}`).join(', '));
               setText(row, 'total', formatCurrency(ord.total));
               return row;
-            })
-      );
+            }));
+      bindPagedContainer({
+        container: getRef(tabBody, 'orders-list'),
+        key: 'm3.minibar',
+        list: getPagedList('m3.minibar', { path: '/m3/consumos?puntoVenta=PV-MINI', map: mapConsumoRows, pageSize: 20 }),
+        filters: {
+          searchPlaceholder: 'Buscar consumo, habitación o huésped…',
+          dates: true,
+        },
+        renderBody: renderMinibarRows,
+        empty: { iconName: 'utensils', title: 'Sin consumos de Minibar', description: 'Registra consumos desde el panel izquierdo.' },
+        noMatch: { iconName: 'utensils', title: 'Sin consumos coincidentes', description: 'Prueba con otras fechas o búsqueda.' },
+      });
     } else if (activeTab === 'servicios_comp') {
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.servicios_comp);
       tabBody = view;
@@ -1025,10 +1056,10 @@ export function renderServiciosPOSModule() {
         getRef(tabBody, 'new-po-btn').addEventListener('click', () => openPurchaseOrderModal(null));
       }
 
-      mountRef(
-        tabBody,
-        'po-tbody',
-        state.purchaseOrders.map((po) => {
+      const renderPurchaseRows = (rows) => {
+        const frag = document.createDocumentFragment();
+        for (const po of rows) {
+          frag.appendChild((() => {
           const row = clone('fila-orden-compra');
           setText(row, 'code', po.code);
           setText(row, 'date', po.createdAt);
@@ -1036,7 +1067,7 @@ export function renderServiciosPOSModule() {
           setText(row, 'items', po.items.map((i) => `${i.quantity} ${i.itemName}`).join(', '));
           setText(row, 'total', formatCurrency(po.total));
           mountRef(row, 'status', StatusText({ label: po.status, variant: getStatusVariant(po.status) }));
-          const showReceive = canEditCurrentTab && po.status !== 'Recibida';
+          const showReceive = canEditCurrentTab && ['Aprobada', 'Enviada', 'Parcialmente recibida'].includes(po.status);
           setVisible(row, 'receive-btn', showReceive);
           if (showReceive) {
             mountRef(row, 'receive-icon', icon('packageCheck', 'w-3'));
@@ -1046,8 +1077,30 @@ export function renderServiciosPOSModule() {
             setVisible(row, 'received-at', true);
           }
           return row;
-        })
-      );
+        })());
+        }
+        return frag;
+      };
+      bindPagedContainer({
+        container: getRef(tabBody, 'po-tbody'),
+        key: 'm3.oc',
+        list: getPagedList('m3.oc', { path: '/m3/ordenes-compra', map: mapPurchaseOrderRows, pageSize: 20 }),
+        filters: {
+          searchPlaceholder: 'Buscar orden o proveedor…',
+          dates: true,
+          statusOptions: [
+            { value: '', label: 'Todos los estados' },
+            { value: 'pendiente de aprobación', label: 'Pendiente de aprobación' },
+            { value: 'aprobada,enviada', label: 'Aprobada / enviada' },
+            { value: 'parcialmente recibida', label: 'Parcialmente recibida' },
+            { value: 'completada', label: 'Recibida' },
+            { value: 'rechazada,cancelada', label: 'Rechazada / cancelada' },
+          ],
+        },
+        renderBody: renderPurchaseRows,
+        empty: { iconName: 'truck', title: 'Sin órdenes de compra', description: 'Aún no hay órdenes registradas.' },
+        noMatch: { iconName: 'truck', title: 'Sin órdenes coincidentes', description: 'Prueba con otro estado, fechas o búsqueda.' },
+      });
 
       mountRef(
         tabBody,
@@ -1159,42 +1212,13 @@ export function renderServiciosPOSModule() {
       );
     }
 
-    const tabCounts = {
-      productos: state.products.length,
-      servicios: state.services.length,
-      restaurante: state.tables.length,
-      room_service: state.posOrders.filter((o) => o.origin === 'Room Service').length,
-      minibar: state.posOrders.filter((o) => o.origin === 'Minibar').length,
-      inventario: lowStockItems.length + pendingReqs.length,
-      proveedores: state.purchaseOrders.length,
-      recetas: state.recipes.length,
-    };
-
-    const barTabs = visibleTabs.map((t) => ({
-      id: t.id,
-      label: t.label,
-      ...(tabCounts[t.id] !== undefined ? { count: tabCounts[t.id] } : {}),
-    }));
-
     mount(
       headerSlot,
       ModuleHeader({
-        moduleNumber: canEditCurrentTab
-          ? 'Módulo 03 · Ingresos Complementarios y Abastecimiento'
-          : 'Módulo 03 · Ingresos Complementarios y Abastecimiento · Modo consulta (solo lectura)',
-        title: 'Servicios, POS, Restaurante y Almacén',
-        subtitle: 'Punto de venta conectado al folio del huésped (Flujo C), gestión de mesas, room service, minibar, inventario con recetario y compras (Flujo D).',
+        moduleNumber: canEditCurrentTab ? 'Servicios, POS y Almacén' : 'Servicios, POS y Almacén · Solo lectura',
+        title: activeMeta?.label ?? 'Servicios, POS y Almacén',
+        subtitle: activeMeta?.subtitle ?? '',
       })
-    );
-    mount(
-      tabsSlot,
-      !isTabDenied && barTabs.length > 0
-        ? SubmoduleBar({
-            tabs: barTabs,
-            activeTab,
-            onChange: (nextTab) => navigateToView('/servicios', nextTab),
-          })
-        : null
     );
     mount(bodySlot, tabBody);
   }

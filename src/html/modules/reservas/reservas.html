@@ -1,19 +1,9 @@
 <div class="stack-md">
-  <div class="row-wrap gap-3">
-    <div data-ref="search-slot"></div>
-    <select class="select-control text-xs" style="width:auto;min-width:11rem" data-ref="status-select">
-      <option value="Todas">Todos los estados</option>
-      <option value="Confirmada">Confirmada</option>
-      <option value="Check-in">Check-in</option>
-      <option value="Check-out">Check-out</option>
-      <option value="Pendiente">Pendiente</option>
-      <option value="Cancelada">Cancelada</option>
-      <option value="No-Show">No-Show</option>
-    </select>
-  </div>
+  <div data-ref="filters-slot"></div>
 
   <div class="card">
     <div class="table-scroll" data-ref="table-wrap"></div>
+    <div data-ref="footer-slot"></div>
   </div>
 </div>
 

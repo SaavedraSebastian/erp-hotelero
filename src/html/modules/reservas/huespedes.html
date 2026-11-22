@@ -1,6 +1,6 @@
 <div class="stack-md">
   <div class="row-between">
-    <div class="flex-1 max-w-md" data-ref="search-slot"></div>
+    <div data-ref="filters-slot"></div>
     <button type="button" class="btn btn-primary btn-sm hidden" data-ref="new-guest-btn">
       <span data-ref="plus-icon"></span>
       <span>Nuevo huésped</span>
@@ -8,24 +8,26 @@
   </div>
 
   <div class="card">
-    <div class="table-scroll">
-      <table class="erp-table">
-        <thead>
-          <tr>
-            <th>Huésped / Empresa</th>
-            <th>Documento</th>
-            <th>Contacto</th>
-            <th>Segmento / Nivel</th>
-            <th class="text-right">Estadías / Gasto</th>
-            <th>Privacidad</th>
-            <th class="text-right hidden" data-ref="actions-th">Acciones</th>
-          </tr>
-        </thead>
-        <tbody data-ref="tbody"></tbody>
-      </table>
-    </div>
+    <div class="table-scroll" data-ref="table-wrap"></div>
+    <div data-ref="footer-slot"></div>
   </div>
 </div>
+
+<template data-tpl="tabla-huespedes">
+  <table class="erp-table">
+    <thead>
+      <tr>
+        <th>Huésped / Empresa</th>
+        <th>Documento</th>
+        <th>Contacto</th>
+        <th>Nacionalidad</th>
+        <th>Privacidad</th>
+        <th class="text-right hidden" data-ref="actions-th">Acciones</th>
+      </tr>
+    </thead>
+    <tbody data-ref="tbody"></tbody>
+  </table>
+</template>
 
 <template data-tpl="fila-huesped">
   <tr>
@@ -38,15 +40,7 @@
       <div class="text-11 text-slate-700" data-ref="email"></div>
       <div class="text-11 font-mono text-slate-500" data-ref="phone"></div>
     </td>
-    <td class="text-xs">
-      <span class="text-navy font-medium" data-ref="segment"></span>
-      <span class="text-slate-400"> · </span>
-      <span class="text-teal font-semibold" data-ref="loyalty"></span>
-    </td>
-    <td class="text-right font-mono">
-      <div class="font-semibold text-navy" data-ref="stays"></div>
-      <div class="text-11 text-slate-500" data-ref="spent"></div>
-    </td>
+    <td class="text-xs text-slate-700" data-ref="nationality"></td>
     <td data-ref="privacy"></td>
     <td class="text-right hidden" data-ref="action"></td>
   </tr>

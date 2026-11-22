@@ -23,10 +23,11 @@ export function mapDatabaseError(error: unknown): unknown {
 }
 
 /** Envuelve un handler async: responde { data } y delega los errores (ya traducidos) al middleware. */
-export function handle(fn: (req: Request) => Promise<unknown>, status = 200): RequestHandler {
+export function handle(fn: (req: Request) => Promise<unknown>, status = 200, raw = false): RequestHandler {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
-      res.status(status).json({ data: await fn(req) });
+      const out = await fn(req);
+      res.status(status).json(raw ? out : { data: out });
     } catch (err) {
       next(mapDatabaseError(err));
     }

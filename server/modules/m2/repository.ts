@@ -1,5 +1,6 @@
 import type { PoolClient } from 'pg';
 import type { PaginationParams } from '../../shared/types/context.ts';
+import { pushDateRange, pushSearchFilter, pushStatusFilter } from '../../shared/pagination/index.ts';
 
 export async function listEstadosHabitacion(client: PoolClient) {
   const roomsRes = await client.query<{
@@ -46,13 +47,17 @@ export async function listEstadosHabitacion(client: PoolClient) {
 export async function listOrdenesLimpieza(client: PoolClient, params: PaginationParams) {
   const values: unknown[] = [];
   const where: string[] = [];
-  if (params.status) {
-    values.push(params.status);
-    where.push(`ol.estado = $${values.length}`);
-  }
+  pushStatusFilter(values, where, 'ol.estado', params.status);
+  pushDateRange(values, where, 'ol.fecha_programada', params.fromDate, params.toDate);
+  pushSearchFilter(values, where, ['h.numero', 'ol.tipo_limpieza', 'ol.prioridad', "(po.nombres || ' ' || po.apellidos)"], params.search);
   const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
   const countRes = await client.query<{ total: string }>(
-    `SELECT COUNT(*)::text AS total FROM g2_housekeeping.orden_limpieza ol ${whereClause}`,
+    `SELECT COUNT(*)::text AS total
+     FROM g2_housekeeping.orden_limpieza ol
+     JOIN g1_reservas.habitacion h ON h.id_habitacion = ol.id_habitacion
+     LEFT JOIN g2_housekeeping.asignacion_limpieza al ON al.numero_orden = ol.numero_orden AND al.vigente = TRUE
+     LEFT JOIN g2_housekeeping.personal_operativo po ON po.id_personal = al.id_personal
+     ${whereClause}`,
     values
   );
 
@@ -98,7 +103,7 @@ export async function listOrdenesLimpieza(client: PoolClient, params: Pagination
        ON al.numero_orden = ol.numero_orden AND al.vigente = TRUE
      LEFT JOIN g2_housekeeping.personal_operativo po ON po.id_personal = al.id_personal
      ${whereClause}
-     ORDER BY ol.fecha_hora_creacion DESC
+     ORDER BY ol.fecha_hora_creacion DESC, ol.numero_orden DESC
      LIMIT $${values.length - 1} OFFSET $${values.length}`,
     values
   );
@@ -112,13 +117,16 @@ export async function listOrdenesLimpieza(client: PoolClient, params: Pagination
 export async function listIncidencias(client: PoolClient, params: PaginationParams) {
   const values: unknown[] = [];
   const where: string[] = [];
-  if (params.status) {
-    values.push(params.status);
-    where.push(`i.estado = $${values.length}`);
-  }
+  pushStatusFilter(values, where, 'i.estado', params.status);
+  pushDateRange(values, where, 'i.fecha_hora_registro', params.fromDate, params.toDate);
+  pushSearchFilter(values, where, ['h.numero', 'i.descripcion', 'a.nombre', 'i.criticidad'], params.search);
   const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
   const countRes = await client.query<{ total: string }>(
-    `SELECT COUNT(*)::text AS total FROM g2_housekeeping.incidencia i ${whereClause}`,
+    `SELECT COUNT(*)::text AS total
+     FROM g2_housekeeping.incidencia i
+     LEFT JOIN g1_reservas.habitacion h ON h.id_habitacion = i.id_habitacion
+     LEFT JOIN g2_housekeeping.activo a ON a.id_activo = i.id_activo
+     ${whereClause}`,
     values
   );
   const offset = (params.page - 1) * params.pageSize;
@@ -142,7 +150,7 @@ export async function listIncidencias(client: PoolClient, params: PaginationPara
      LEFT JOIN g1_reservas.habitacion h ON h.id_habitacion = i.id_habitacion
      LEFT JOIN g2_housekeeping.activo a ON a.id_activo = i.id_activo
      ${whereClause}
-     ORDER BY i.fecha_hora_registro DESC
+     ORDER BY i.fecha_hora_registro DESC, i.numero_incidencia DESC
      LIMIT $${values.length - 1} OFFSET $${values.length}`,
     values
   );
@@ -156,13 +164,16 @@ export async function listIncidencias(client: PoolClient, params: PaginationPara
 export async function listOrdenesTrabajo(client: PoolClient, params: PaginationParams) {
   const values: unknown[] = [];
   const where: string[] = [];
-  if (params.status) {
-    values.push(params.status);
-    where.push(`ot.estado = $${values.length}`);
-  }
+  pushStatusFilter(values, where, 'ot.estado', params.status);
+  pushDateRange(values, where, 'ot.fecha_hora_creacion', params.fromDate, params.toDate);
+  pushSearchFilter(values, where, ['a.nombre', 'ot.descripcion_tarea', "(po.nombres || ' ' || po.apellidos)", 'ot.tipo_ot', 'ot.numero_ot'], params.search);
   const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
   const countRes = await client.query<{ total: string }>(
-    `SELECT COUNT(*)::text AS total FROM g2_housekeeping.orden_trabajo ot ${whereClause}`,
+    `SELECT COUNT(*)::text AS total
+     FROM g2_housekeeping.orden_trabajo ot
+     LEFT JOIN g2_housekeeping.activo a ON a.id_activo = ot.id_activo
+     LEFT JOIN g2_housekeeping.personal_operativo po ON po.id_personal = ot.id_tecnico
+     ${whereClause}`,
     values
   );
   const offset = (params.page - 1) * params.pageSize;
@@ -191,7 +202,7 @@ export async function listOrdenesTrabajo(client: PoolClient, params: PaginationP
      LEFT JOIN g2_housekeeping.activo a ON a.id_activo = ot.id_activo
      LEFT JOIN g2_housekeeping.personal_operativo po ON po.id_personal = ot.id_tecnico
      ${whereClause}
-     ORDER BY ot.fecha_hora_creacion DESC
+     ORDER BY ot.fecha_hora_creacion DESC, ot.numero_ot DESC
      LIMIT $${values.length - 1} OFFSET $${values.length}`,
     values
   );

@@ -40,7 +40,14 @@ export async function updateHuesped(req: Request, res: Response, next: NextFunct
 
 export async function listTarifas(req: Request, res: Response, next: NextFunction) {
   try {
-    res.json(await service.getTarifasService(req.authContext!));
+    const q = req.query as Record<string, unknown>;
+    const soloVigentes = q.vigentes === 'true' || q.vigentes === '1';
+    // Con `page` se devuelve paginado (mantenedor); sin él, el conjunto de tarifas usadas para reservar.
+    if (q.page !== undefined) {
+      res.json(await service.getTarifasPaginadoService(req.authContext!, parsePagination(q), soloVigentes));
+      return;
+    }
+    res.json(await service.getTarifasService(req.authContext!, { soloVigentes }));
   } catch (err) {
     next(err);
   }

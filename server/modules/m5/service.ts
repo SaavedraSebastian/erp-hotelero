@@ -17,7 +17,7 @@ function sanitizePerfilPii(row: repo.PerfilHuespedRow, canViewFullPII: boolean):
 export async function getPerfilesService(ctx: AuthContext, pagination: PaginationParams) {
   const offset = (pagination.page - 1) * pagination.pageSize;
   const { rows, total } = await withReadOnlyClient(
-    (client) => repo.listPerfiles(client, pagination.pageSize, offset),
+    (client) => repo.listPerfiles(client, pagination.pageSize, offset, { search: pagination.search, status: pagination.status }),
     ctx
   );
   const masked = rows.map((row) => sanitizePerfilPii(row, ctx.canViewFullPII));
@@ -60,7 +60,7 @@ export async function registrarMovimientoPuntosService(
 export async function getReclamosService(ctx: AuthContext, pagination: PaginationParams) {
   const offset = (pagination.page - 1) * pagination.pageSize;
   const { rows, total } = await withReadOnlyClient(
-    (client) => repo.listReclamos(client, pagination.pageSize, offset),
+    (client) => repo.listReclamos(client, pagination.pageSize, offset, { search: pagination.search, status: pagination.status }),
     ctx
   );
   return buildPaginatedResponse(rows, total, pagination.page, pagination.pageSize);
@@ -100,7 +100,7 @@ export async function decidirCompensacionService(
 export async function getCampanasService(ctx: AuthContext, pagination: PaginationParams) {
   const offset = (pagination.page - 1) * pagination.pageSize;
   const { rows, total } = await withReadOnlyClient(
-    (client) => repo.listCampanas(client, pagination.pageSize, offset),
+    (client) => repo.listCampanas(client, pagination.pageSize, offset, { search: pagination.search, status: pagination.status }),
     ctx
   );
   return buildPaginatedResponse(rows, total, pagination.page, pagination.pageSize);
@@ -124,7 +124,7 @@ export async function cambiarEstadoCampanaService(
 export async function getOpinionesService(ctx: AuthContext, pagination: PaginationParams) {
   const offset = (pagination.page - 1) * pagination.pageSize;
   const { rows, total } = await withReadOnlyClient(
-    (client) => repo.listOpiniones(client, pagination.pageSize, offset),
+    (client) => repo.listOpiniones(client, pagination.pageSize, offset, { search: pagination.search, status: pagination.status }),
     ctx
   );
   return buildPaginatedResponse(rows, total, pagination.page, pagination.pageSize);
@@ -144,7 +144,7 @@ export async function responderOpinionService(ctx: AuthContext, idOpinion: numbe
 export async function getSolicitudesService(ctx: AuthContext, pagination: PaginationParams) {
   const offset = (pagination.page - 1) * pagination.pageSize;
   const { rows, total } = await withReadOnlyClient(
-    (client) => repo.listSolicitudesHuesped(client, pagination.pageSize, offset),
+    (client) => repo.listSolicitudesHuesped(client, pagination.pageSize, offset, { search: pagination.search, status: pagination.status }),
     ctx
   );
   return buildPaginatedResponse(rows, total, pagination.page, pagination.pageSize);

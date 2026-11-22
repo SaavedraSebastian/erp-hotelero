@@ -32,7 +32,7 @@ const NAV_ITEMS = [
       { label: 'Sobreventa / Espera', tab: 'lista_espera' },
       { label: 'Ocupación', tab: 'ocupacion' },
       { label: 'Huéspedes', tab: 'huespedes' },
-      { label: 'IA Tarifas y No-Show', tab: 'ia_tarifas' },
+      { label: 'Tarifa dinámica y No-Show', tab: 'ia_tarifas' },
     ],
   },
   {
@@ -123,6 +123,13 @@ const NAV_ITEMS = [
 
 const uiState = {
   mobileOpen: false,
+  sidebarCollapsed: (() => {
+    try {
+      return localStorage.getItem('sgh_sidebar_collapsed') === '1';
+    } catch {
+      return false;
+    }
+  })(),
   expandedModule: null,
   searchQuery: '',
   notifOpen: false,
@@ -205,9 +212,24 @@ export function renderERPLayout(outletNode) {
   const viewport = getRef(wrapper, 'viewport');
 
   mountRef(wrapper, 'search-icon', icon('search', 'topbar-search-icon'));
+  const shellEl = wrapper.querySelector?.('.erp-shell') ?? wrapper.firstElementChild;
+  shellEl?.classList.toggle('sidebar-collapsed', uiState.sidebarCollapsed);
   if (mobileMenuBtn) {
     mount(mobileMenuBtn, icon('menu', 'w-5'));
+    mobileMenuBtn.setAttribute('aria-label', 'Mostrar u ocultar el menú');
+    mobileMenuBtn.title = 'Mostrar u ocultar el menú';
     mobileMenuBtn.addEventListener('click', () => {
+      // En pantallas anchas oculta/muestra el menú lateral; en móvil abre el panel.
+      if (window.matchMedia('(min-width: 1024px)').matches) {
+        uiState.sidebarCollapsed = !uiState.sidebarCollapsed;
+        shellEl?.classList.toggle('sidebar-collapsed', uiState.sidebarCollapsed);
+        try {
+          localStorage.setItem('sgh_sidebar_collapsed', uiState.sidebarCollapsed ? '1' : '0');
+        } catch {
+          // sin almacenamiento: el estado vale solo para esta sesión
+        }
+        return;
+      }
       uiState.mobileOpen = true;
       syncMobileDrawer();
     });

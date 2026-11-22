@@ -12,6 +12,8 @@ import { formatCurrency } from '../utils/formatters.js';
 import { navigate } from '../core/router.js';
 import { erpStore } from '../core/store.js';
 import { TODAY } from '../data/empty-state.js';
+import { addDays } from '../utils/dates.js';
+import { fetchFinanceSummary } from '../services/data-adapter.js';
 import { ModuleAIAdvisor, ModuleHeader, StatTile, StatusText } from '../components/ui-components.js';
 import { renderDonutChart, renderGroupedBarChart } from '../components/charts.js';
 import dashboardHtml from '../../html/pages/dashboard.html?raw';
@@ -21,6 +23,10 @@ const cloneDashTpl = createTemplateLibrary(dashboardHtml);
 const dashUi = {
   dateRange: 'hoy',
 };
+
+// Resúmenes financieros por rango (calculados en el servidor) y consultas en curso.
+const summaries = new Map();
+const pendingSummaries = new Set();
 
 export function renderDashboardPage() {
   const root = parseHtmlTemplate(dashboardHtml);
@@ -38,7 +44,8 @@ export function renderDashboardPage() {
     const currentPermissions = erpStore.currentPermissions;
     if (!state || !currentUser) return;
 
-    const rangeFactor = dashUi.dateRange === 'hoy' ? 1 : dashUi.dateRange === '7d' ? 6.4 : 26.5;
+    const rangeDays = dashUi.dateRange === 'hoy' ? 1 : dashUi.dateRange === '7d' ? 7 : 30;
+    const rangeFrom = addDays(TODAY, -(rangeDays - 1));
 
     const totalRooms = state.rooms.length;
     const occupiedRooms = state.rooms.filter((r) => r.commercialStatus === 'Ocupada').length;
@@ -64,66 +71,41 @@ export function renderDashboardPage() {
     const openIncidents = state.incidents.filter((i) => i.status !== 'Resuelta').length;
     const openWOs = state.workOrders.filter((w) => w.status !== 'Completada').length;
 
-    const posTotal = state.posOrders.reduce((s, o) => s + o.total, 0);
     const criticalStock = state.inventory.filter((i) => i.stock <= i.minStock * 0.85).length;
     const pendingReqs = state.supplyRequisitions.filter((r) => r.status === 'Solicitada').length;
 
-    const totalRevenue = state.folios.reduce((sum, f) => sum + f.totalCharges, 0);
-    const openReceivables =
-      state.folios.reduce((sum, f) => sum + f.balance, 0) +
-      state.receivables.reduce((sum, r) => sum + r.pendingAmount, 0);
-    const totalExpenses =
-      state.expenses.reduce((sum, e) => sum + e.amount, 0) +
-      state.purchaseOrders.filter((p) => p.status !== 'Recibida').reduce((sum, p) => sum + p.total, 0);
+    // Cifras financieras del rango elegido, calculadas por el servidor.
+    const sumKey = `${rangeFrom}|${TODAY}`;
+    const cached = summaries.get(sumKey);
+    const summary = cached?.data ?? null;
+    const stale = !cached || Date.now() - cached.at > 60_000; // se refresca cada minuto
+    if (stale && !pendingSummaries.has(sumKey) && erpStore.canView('m4')) {
+      pendingSummaries.add(sumKey);
+      fetchFinanceSummary(rangeFrom, TODAY)
+        .then((r) => summaries.set(sumKey, { at: Date.now(), data: r ?? { areas: [] } }))
+        .catch(() => summaries.set(sumKey, { at: Date.now(), data: { areas: [] } }))
+        .finally(() => {
+          pendingSummaries.delete(sumKey);
+          renderContent();
+        });
+    }
+    const dash = (n) => (summary && summary.billed !== undefined ? formatCurrency(n) : '—');
+    const totalRevenue = summary?.billed ?? 0;
+    const openReceivables = (summary?.receivable ?? 0) + state.folios.reduce((sum, f) => sum + f.balance, 0);
+    const totalExpenses = summary?.expenses ?? 0;
+    const posTotal = summary?.servicesSales ?? 0;
     const pendingPayablesCount =
       state.expenses.filter((e) => e.status === 'Pendiente').length +
-      state.purchaseOrders.filter((p) => p.status !== 'Recibida').length;
+      state.purchaseOrders.filter((p) => !['Recibida', 'Rechazada', 'Cancelada'].includes(p.status)).length;
 
     const openComplaints = state.complaints.filter((c) => c.status !== 'Resuelto').length;
     const avgSatisfaction =
       state.surveys.length > 0
         ? (state.surveys.reduce((s, r) => s + r.overallScore, 0) / state.surveys.length).toFixed(2)
-        : '4.63';
+        : '—';
 
-    const roomRevenueBase = state.folios.reduce(
-      (s, f) => s + f.charges.filter((c) => c.category === 'Alojamiento').reduce((a, b) => a + b.amount, 0),
-      0
-    );
-    const posRevenueBase = state.folios.reduce(
-      (s, f) =>
-        s +
-        f.charges
-          .filter((c) => ['Restaurante', 'Minibar', 'Room Service'].includes(c.category))
-          .reduce((a, b) => a + b.amount, 0),
-      0
-    );
-    const spaRevenueBase = state.folios.reduce(
-      (s, f) => s + f.charges.filter((c) => c.category === 'Spa / Servicios').reduce((a, b) => a + b.amount, 0),
-      0
-    );
-
-    const revenueExpenseData = [
-      {
-        name: 'Alojamiento',
-        costos: Math.round(1128 * rangeFactor),
-        ingresos: Math.round((roomRevenueBase || 3760) * rangeFactor),
-      },
-      {
-        name: 'Restaurante/POS',
-        costos: Math.round(420 * rangeFactor),
-        ingresos: Math.round((posRevenueBase + 610) * rangeFactor),
-      },
-      {
-        name: 'Spa y Servicios',
-        costos: Math.round(280 * rangeFactor),
-        ingresos: Math.round((spaRevenueBase + 600) * rangeFactor),
-      },
-      {
-        name: 'Operación Gral.',
-        costos: Math.round(1950 * rangeFactor),
-        ingresos: Math.round(450 * rangeFactor),
-      },
-    ];
+    // Ingresos = consumos por área; costos = gastos aprobados por centro de costo, dentro del rango elegido.
+    const revenueExpenseData = (summary?.areas ?? []).slice(0, 6).map((a) => ({ name: a.name, ingresos: a.ingresos, costos: a.costos }));
 
     const roomDistribution = [
       { name: 'Ocupadas', value: occupiedRooms, color: '#0F172A' },
@@ -182,8 +164,8 @@ export function renderDashboardPage() {
       kpis.push(
         StatTile({
           label: 'Ventas Restaurante y Servicios',
-          value: formatCurrency(posTotal),
-          meta: `${state.posOrders.length} órdenes registradas`,
+          value: dash(posTotal),
+          meta: summary ? `${summary.servicesCount} consumos en el período` : 'Calculando…',
           tone: 'teal',
           onClick: () => navigate('/servicios/pos'),
         }),
@@ -200,15 +182,15 @@ export function renderDashboardPage() {
       kpis.push(
         StatTile({
           label: 'Ingresos consolidados',
-          value: formatCurrency(totalRevenue),
-          meta: `Por cobrar: ${formatCurrency(openReceivables)}`,
+          value: dash(totalRevenue),
+          meta: `Por cobrar: ${dash(openReceivables)}`,
           tone: 'teal',
           onClick: () => navigate('/finanzas/folios'),
         }),
         StatTile({
           label: 'Gastos operativos',
-          value: formatCurrency(totalExpenses),
-          meta: `${pendingPayablesCount} comprobante(s) por pagar`,
+          value: dash(totalExpenses),
+          meta: `${pendingPayablesCount} pendiente(s) de pago o aprobación`,
           onClick: () => navigate('/finanzas/gastos'),
         })
       );
@@ -315,7 +297,7 @@ export function renderDashboardPage() {
         iconName: 'utensils',
         kicker: 'Consumos',
         title: 'Servicios, POS y Almacén',
-        desc: `${formatCurrency(posTotal)} · ${criticalStock} alertas`,
+        desc: `${dash(posTotal)} · ${criticalStock} alertas`,
       },
       {
         mod: 'm4',
@@ -323,7 +305,7 @@ export function renderDashboardPage() {
         iconName: 'receipt',
         kicker: 'Tesorería',
         title: 'Facturación y Finanzas',
-        desc: `${formatCurrency(totalRevenue)} · CxC ${formatCurrency(openReceivables)}`,
+        desc: `${dash(totalRevenue)} · CxC ${dash(openReceivables)}`,
       },
       {
         mod: 'm5',
@@ -347,7 +329,9 @@ export function renderDashboardPage() {
         mountRef(
           chartsSection,
           'finance-chart',
-          renderGroupedBarChart({
+          revenueExpenseData.length === 0
+            ? h('p', { className: 'text-xs text-slate-500 p-4' }, summary ? 'Sin ingresos ni gastos registrados en el período seleccionado.' : 'Calculando…')
+            : renderGroupedBarChart({
             data: revenueExpenseData,
             labelKey: 'name',
             series: [
