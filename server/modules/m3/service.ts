@@ -7,7 +7,10 @@ import { aplicarMovimientoStock } from '../gestion/stock.ts';
 import * as repo from './repository.ts';
 
 function genCode(prefix: string): string {
-  return `${prefix}-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`.slice(0, 30);
+  // 104 bits de entropía dentro del límite VARCHAR(30); evita colisiones entre
+  // instancias del servidor y solicitudes creadas en el mismo milisegundo.
+  const entropy = crypto.randomUUID().replaceAll('-', '').toUpperCase();
+  return `${prefix}-${entropy}`.slice(0, 30);
 }
 
 export async function getCatalogoService(ctx: AuthContext) {
@@ -52,12 +55,31 @@ export async function createComandaService(
   return withTransaction(ctx, async (client) => {
     let mesaNombre: string | null = null;
     if (input.modalidad === 'mesa') {
-      const mesaRes = await client.query<{ nombre: string; estado: string }>(
-        `SELECT nombre, estado FROM g3_servicios.mesa WHERE id_mesa = $1`,
+      // Bloquear la mesa serializa dos clics/solicitudes concurrentes y garantiza
+      // que nunca se creen dos comandas abiertas para la misma mesa.
+      const mesaRes = await client.query<{ nombre: string; estado: string; id_punto_venta: string }>(
+        `SELECT nombre, estado, id_punto_venta
+         FROM g3_servicios.mesa
+         WHERE id_mesa = $1
+         FOR UPDATE`,
         [input.id_mesa]
       );
       if (!mesaRes.rows[0] || mesaRes.rows[0].estado !== 'activa') {
         throw new DomainRuleError('La mesa seleccionada no existe o está inactiva.');
+      }
+      if (mesaRes.rows[0].id_punto_venta !== input.id_punto_venta) {
+        throw new DomainRuleError('La mesa no pertenece al punto de venta seleccionado.');
+      }
+      const abierta = await client.query(
+        `SELECT 1
+         FROM g3_servicios.comanda
+         WHERE id_mesa = $1
+           AND estado NOT IN ('entregada', 'cancelada')
+         LIMIT 1`,
+        [input.id_mesa]
+      );
+      if (abierta.rows[0]) {
+        throw new DomainRuleError('La mesa ya tiene una comanda abierta. Ciérrala o cancélala antes de registrar otra.');
       }
       mesaNombre = mesaRes.rows[0].nombre;
     }
@@ -141,6 +163,11 @@ export async function entregarComandaYCrearConsumoService(
   }
 ) {
   return withTransaction(ctx, async (client) => {
+    // Los triggers heredados de M3 contienen referencias no calificadas (p. ej. "consumo").
+    // Mantener el esquema de negocio en el search_path evita que PostgreSQL las resuelva
+    // contra public o contra el usuario de conexión.
+    await client.query('SET LOCAL search_path TO pg_catalog, g3_servicios, seguridad, public, pg_temp');
+
     const cmdRes = await client.query<{
       numero_comanda: string;
       id_punto_venta: string;

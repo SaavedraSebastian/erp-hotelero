@@ -722,7 +722,9 @@ export function createWriteActions(ctx) {
       let table = null;
       if (isComanda && !isRoomService) {
         table = (st.tables ?? []).find((t) => t.number === input.tableNumber);
-        if (!table) return fail('Mesa requerida', 'Selecciona una mesa válida para la comanda.');
+        if (!table || table.status !== 'Libre') {
+          return fail('Mesa no disponible', 'Selecciona una mesa libre; la mesa elegida ya tiene una comanda abierta o está inactiva.');
+        }
       }
       if (isRoomService && !stayId) return fail('Habitación requerida', 'Room Service se entrega en una habitación con estadía activa.');
 
