@@ -129,7 +129,7 @@ export function ListFilters({ list, searchPlaceholder = 'Buscar…', statusOptio
 const localState = new Map();
 
 /** Devuelve { slice, footer }: la página visible de `rows` y su pie de paginación. */
-export function localPager(key, rows, rerender, defaultSize = 20) {
+export function localPager(key, rows, rerender, defaultSize = 10) {
   const st = localState.get(key) ?? { page: 1, pageSize: defaultSize };
   localState.set(key, st);
   const pages = Math.max(1, Math.ceil(rows.length / st.pageSize));

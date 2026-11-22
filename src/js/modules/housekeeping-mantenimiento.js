@@ -440,7 +440,7 @@ export function renderHousekeepingModule() {
       };
       if (onlyMine) {
         // Personal con vista restringida: solo sus tareas abiertas, que ya están cargadas.
-        const lp = localPager('m2.limpieza', scopedCleaningOrders, renderContent, 20);
+        const lp = localPager('m2.limpieza', scopedCleaningOrders, renderContent, 10);
         mountRef(tabBody, 'table-wrap', scopedCleaningOrders.length ? renderCleaningTable(lp.slice) : EmptyState({ iconName: 'sparkles', title: 'Sin tareas asignadas', description: 'No tienes órdenes de limpieza abiertas.' }));
         mountRef(tabBody, 'footer-slot', lp.footer);
       } else {
@@ -654,7 +654,7 @@ export function renderHousekeepingModule() {
         mountRef(tabBody, 'plus-icon', icon('plus', 'w-3.5'));
         getRef(tabBody, 'new-btn')?.addEventListener('click', () => openPreventiveModal(null));
       }
-      const prevPager = localPager('m2.preventivo', state.preventiveSchedules, renderContent, 20);
+      const prevPager = localPager('m2.preventivo', state.preventiveSchedules, renderContent, 10);
       mountRef(tabBody, 'footer-slot', prevPager.footer);
       mountRef(
         tabBody,
@@ -700,7 +700,7 @@ export function renderHousekeepingModule() {
           return card;
         }));
       if (onlyMine) {
-        const lp = localPager('m2.ot', scopedWorkOrders, renderContent, 20);
+        const lp = localPager('m2.ot', scopedWorkOrders, renderContent, 10);
         mountRef(tabBody, 'grid-wrap', scopedWorkOrders.length ? renderWorkOrderCards(lp.slice) : EmptyState({ iconName: 'wrench', title: 'Sin órdenes asignadas', description: 'No tienes órdenes de trabajo abiertas.' }));
         mountRef(tabBody, 'footer-slot', lp.footer);
       } else {
@@ -748,7 +748,7 @@ export function renderHousekeepingModule() {
             (a.brand || '').toLowerCase().includes(q) ||
             String(a.roomNumber || '').toLowerCase().includes(q)
         );
-        const lp = localPager('m2.activos', filtered, renderAssetRows, 20);
+        const lp = localPager('m2.activos', filtered, renderAssetRows, 10);
         mountRef(tabBody, 'footer-slot', lp.footer);
         mountRef(
           tabBody,

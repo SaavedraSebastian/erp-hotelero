@@ -35,7 +35,25 @@ const ROUTE_RESOURCES = {
   '/configuracion': ['bitacoras'],
 };
 
+// En Reservas cada pestaña carga únicamente los datos que realmente utiliza.
+// Esto evita que abrir Habitaciones dispare, entre otros, el endpoint de huéspedes.
+const M1_TAB_RESOURCES = {
+  habitaciones: ['habitaciones', 'reservas', 'tarifas', 'catalogos'],
+  disponibilidad: ['habitaciones', 'reservas'],
+  reservas: ['habitaciones', 'huespedes', 'reservas', 'cuentas'],
+  tarifas: ['tarifas', 'catalogos'],
+  checkin: ['habitaciones', 'huespedes', 'reservas', 'catalogos'],
+  checkout: ['habitaciones', 'huespedes', 'reservas', 'cuentas'],
+  lista_espera: ['huespedes', 'listaEspera', 'catalogos'],
+  ocupacion: ['habitaciones', 'reservas', 'tarifas'],
+  huespedes: ['huespedes', 'reservas'],
+  ia_tarifas: ['habitaciones', 'reservas', 'tarifas', 'listaEspera', 'tarifaDinamica'],
+};
+
 function resourcesForRoute(route = getRoute()) {
+  if (route.basePath === '/reservas') {
+    return M1_TAB_RESOURCES[route.tab || 'habitaciones'] ?? M1_TAB_RESOURCES.habitaciones;
+  }
   return ROUTE_RESOURCES[route.basePath] ?? ['resumen'];
 }
 

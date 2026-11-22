@@ -470,6 +470,7 @@ export function renderReservasModule() {
         typeSel.value = m1Ui.roomTypeFilter;
         typeSel.addEventListener('change', (e) => {
           m1Ui.roomTypeFilter = e.target.value;
+          resetLocalPager('m1.habitaciones');
           renderRoomsRows();
         });
       }
@@ -492,11 +493,12 @@ export function renderReservasModule() {
             (rm.features || []).some((f) => f.toLowerCase().includes(q));
           return matchType && matchQ;
         });
+        const roomPager = localPager('m1.habitaciones', filteredRooms, renderRoomsRows, 10);
 
         mountRef(
           tabBody,
           'tbody',
-          filteredRooms.map((rm) => {
+          roomPager.slice.map((rm) => {
             const tr = clone('fila-habitacion');
             setText(tr, 'number', `Hab. ${rm.number}`);
             setText(tr, 'floor', ` · P${rm.floor}`);
@@ -514,6 +516,7 @@ export function renderReservasModule() {
             return tr;
           })
         );
+        mountRef(tabBody, 'pagination-slot', roomPager.footer);
       };
 
       mountRef(tabBody, 'search-slot', SearchInput({
@@ -521,6 +524,7 @@ export function renderReservasModule() {
         placeholder: 'Buscar por número, tipo o característica...',
         onChange: (v) => {
           m1Ui.roomSearch = v;
+          resetLocalPager('m1.habitaciones');
           renderRoomsRows();
         },
       }));
