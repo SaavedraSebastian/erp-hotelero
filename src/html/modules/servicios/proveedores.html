@@ -1,0 +1,65 @@
+<div class="stack-md">
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Órdenes de Compra y Proveedores</h3>
+      <div class="row-wrap hidden" data-ref="header-actions">
+        <button type="button" class="btn btn-outline btn-sm" data-ref="new-sup-btn">
+          <span data-ref="new-sup-icon"></span>
+          <span>Proveedor</span>
+        </button>
+        <button type="button" class="btn btn-primary btn-sm" data-ref="new-po-btn">
+          <span data-ref="new-po-icon"></span>
+          <span>Emitir Orden de Compra</span>
+        </button>
+      </div>
+    </div>
+    <div class="table-scroll">
+      <table class="erp-table">
+        <thead>
+          <tr>
+            <th>Orden / Fecha</th>
+            <th>Proveedor</th>
+            <th>Detalle</th>
+            <th class="text-right">Total</th>
+            <th>Estado</th>
+            <th class="text-right">Recepción</th>
+          </tr>
+        </thead>
+        <tbody data-ref="po-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="grid-2" data-ref="sup-grid"></div>
+</div>
+
+<template data-tpl="fila-orden-compra">
+  <tr>
+    <td>
+      <div class="font-mono font-bold text-navy" data-ref="code"></div>
+      <div class="font-mono text-11 text-slate-400" data-ref="date"></div>
+    </td>
+    <td class="font-medium text-navy" data-ref="supplier"></td>
+    <td class="text-slate-600" data-ref="items"></td>
+    <td class="text-right font-mono font-bold text-navy" data-ref="total"></td>
+    <td data-ref="status"></td>
+    <td class="text-right">
+      <button type="button" class="btn btn-teal btn-xs hidden" data-ref="receive-btn">
+        <span data-ref="receive-icon"></span>
+        <span>Recibir compra</span>
+      </button>
+      <span class="font-mono text-11 text-slate-400 hidden" data-ref="received-at"></span>
+    </td>
+  </tr>
+</template>
+
+<template data-tpl="card-proveedor">
+  <div class="card card-pad stack-xs">
+    <div class="row-between">
+      <h4 class="text-sm font-bold text-navy" data-ref="name"></h4>
+      <span class="font-mono text-xs font-semibold text-teal" data-ref="rating"></span>
+    </div>
+    <div class="font-mono text-11 text-slate-500" data-ref="ruc-cat"></div>
+    <div class="text-11 text-slate-500" data-ref="contact"></div>
+  </div>
+</template>

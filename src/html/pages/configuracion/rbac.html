@@ -1,0 +1,36 @@
+<div class="card">
+  <div class="card-header">
+    <div>
+      <h2 class="card-title">Control de Acceso Basado en Roles (16 Perfiles RBAC)</h2>
+      <p class="card-subtitle">V = Ver módulo · E = Editar/Operar · PII = Datos personales sin enmascarar.</p>
+    </div>
+    <div data-ref="readonly-badge"></div>
+  </div>
+  <div class="table-scroll">
+    <table class="erp-table">
+      <thead>
+        <tr data-ref="head-row">
+          <th>Rol / Perfil</th>
+        </tr>
+      </thead>
+      <tbody data-ref="tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<template data-tpl="fila-rbac">
+  <tr>
+    <td>
+      <div class="font-semibold text-navy" data-ref="role-name"></div>
+    </td>
+  </tr>
+</template>
+
+<template data-tpl="celda-rbac-permiso">
+  <td class="text-center">
+    <div class="inline-flex items-center gap-1">
+      <button type="button" class="rbac-toggle-btn" title="Permiso de lectura" data-ref="view-btn">V</button>
+      <button type="button" class="rbac-toggle-btn" title="Permiso de escritura" data-ref="edit-btn">E</button>
+    </div>
+  </td>
+</template>

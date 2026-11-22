@@ -1,0 +1,83 @@
+<div class="split-layout-3">
+  <div class="stack-sm">
+    <div class="text-xs font-semibold text-slate-600" data-ref="folios-heading"></div>
+    <div class="stack-sm" data-ref="folios-list"></div>
+  </div>
+  <div data-ref="detail-slot"></div>
+</div>
+
+<template data-tpl="item-folio-lista">
+  <button type="button" class="card p-3 w-full text-left" style="width: 100%; text-align: left; cursor: pointer;">
+    <div class="row-between">
+      <span class="font-mono text-xs font-bold text-navy" data-ref="code-room"></span>
+      <div data-ref="status"></div>
+    </div>
+    <div class="text-xs font-medium text-navy mt-1" data-ref="guest"></div>
+    <div class="row-between text-11 font-mono mt-1.5">
+      <span class="text-slate-500" data-ref="total"></span>
+      <span class="font-bold" data-ref="balance"></span>
+    </div>
+  </button>
+</template>
+
+<template data-tpl="detalle-folio">
+  <div class="card card-pad stack-md">
+    <div class="row-between border-b pb-3">
+      <div>
+        <div class="font-mono text-xs text-teal font-semibold" data-ref="code-room"></div>
+        <h2 class="text-lg font-bold text-navy" data-ref="guest"></h2>
+        <div class="text-11 text-slate-500" data-ref="opened-at"></div>
+      </div>
+      <div class="row-wrap">
+        <button type="button" class="btn btn-outline btn-sm hidden" data-ref="charge-btn">
+          <span data-ref="charge-icon"></span>
+          <span>Cargo manual</span>
+        </button>
+        <button type="button" class="btn btn-teal btn-sm hidden" data-ref="collect-btn">Cobrar saldo</button>
+      </div>
+    </div>
+
+    <div class="grid-3" data-ref="kpis"></div>
+
+    <div>
+      <h3 class="text-xs font-bold text-navy mb-2">Detalle de Cargos</h3>
+      <div class="border rounded-md table-scroll">
+        <table class="erp-table">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Origen</th>
+              <th>Concepto</th>
+              <th class="text-right">Importe</th>
+            </tr>
+          </thead>
+          <tbody data-ref="charges-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div>
+      <h3 class="text-xs font-bold text-navy mb-2">Pagos Aplicados</h3>
+      <div class="divide-list border rounded-md" data-ref="payments-list"></div>
+    </div>
+  </div>
+</template>
+
+<template data-tpl="fila-cargo-folio">
+  <tr>
+    <td class="font-mono text-11 text-slate-500" data-ref="date"></td>
+    <td class="font-mono text-11 text-teal font-semibold" data-ref="source"></td>
+    <td class="text-xs text-navy" data-ref="desc"></td>
+    <td class="text-right font-mono font-semibold text-navy" data-ref="amount"></td>
+  </tr>
+</template>
+
+<template data-tpl="fila-pago-aplicado">
+  <div class="p-3 row-between text-xs">
+    <div>
+      <span class="font-mono text-navy font-medium" data-ref="summary"></span>
+      <span class="text-slate-400 font-mono ml-1.5" data-ref="meta"></span>
+    </div>
+    <span class="font-mono font-semibold text-success" data-ref="amount"></span>
+  </div>
+</template>

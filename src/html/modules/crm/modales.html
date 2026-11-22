@@ -1,0 +1,165 @@
+<div class="module-templates" hidden>
+  <template data-tpl="modal-reclamo">
+    <form class="stack-md">
+      <div class="grid-2">
+        <div>
+          <label class="field-label">Huésped</label>
+          <select class="select-control" data-ref="guest"></select>
+        </div>
+        <div>
+          <label class="field-label">Habitación</label>
+          <input class="input-control font-mono" data-ref="room" />
+        </div>
+        <div>
+          <label class="field-label">Categoría</label>
+          <select class="select-control" data-ref="category">
+            <option value="Habitación / Infraestructura">Habitación / Infraestructura</option>
+            <option value="Limpieza">Limpieza</option>
+            <option value="Servicio / Atención">Servicio / Atención</option>
+            <option value="Restaurante">Restaurante</option>
+            <option value="Facturación">Facturación</option>
+            <option value="Ruido">Ruido</option>
+          </select>
+        </div>
+        <div>
+          <label class="field-label">Severidad</label>
+          <select class="select-control" data-ref="severity">
+            <option value="Crítica">Crítica</option>
+            <option value="Alta">Alta</option>
+            <option value="Media">Media</option>
+            <option value="Baja">Baja</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label class="field-label">Descripción del reclamo</label>
+        <textarea rows="3" required class="textarea-control" data-ref="description"></textarea>
+      </div>
+      <label class="checkbox-row">
+        <input type="checkbox" data-ref="escalate" />
+        <span>Escalar automáticamente como Incidencia en Mantenimiento</span>
+      </label>
+      <div class="row-wrap justify-end pt-2">
+        <button type="button" class="btn btn-outline-muted" data-ref="cancel-btn">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Registrar reclamo</button>
+      </div>
+    </form>
+  </template>
+
+  <template data-tpl="modal-solicitud">
+    <form class="stack-md">
+      <div class="grid-2">
+        <div>
+          <label class="field-label">Huésped</label>
+          <select class="select-control" data-ref="guest"></select>
+        </div>
+        <div>
+          <label class="field-label">Habitación</label>
+          <input class="input-control font-mono" data-ref="room" />
+        </div>
+        <div>
+          <label class="field-label">Tipo de solicitud</label>
+          <select class="select-control" data-ref="type">
+            <option value="Amenities / Almohadas">Amenities / Almohadas</option>
+            <option value="Late Check-out">Late Check-out</option>
+            <option value="Traslado Aeropuerto">Traslado Aeropuerto</option>
+            <option value="Reserva Restaurante">Reserva Restaurante</option>
+            <option value="Soporte Técnico">Soporte Técnico</option>
+            <option value="Información">Información</option>
+          </select>
+        </div>
+        <div>
+          <label class="field-label">Área destino</label>
+          <select class="select-control" data-ref="target-area">
+            <option value="Housekeeping">Housekeeping</option>
+            <option value="Recepción">Recepción</option>
+            <option value="Mantenimiento">Mantenimiento</option>
+            <option value="Restaurante/POS">Restaurante/POS</option>
+            <option value="Concierge">Concierge</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label class="field-label">Detalle</label>
+        <textarea rows="2" required class="textarea-control" data-ref="description"></textarea>
+      </div>
+      <div class="row-wrap justify-end pt-2">
+        <button type="button" class="btn btn-outline-muted" data-ref="cancel-btn">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Crear y derivar</button>
+      </div>
+    </form>
+  </template>
+
+  <template data-tpl="modal-campana">
+    <form class="stack-md">
+      <div>
+        <label class="field-label">Nombre campaña</label>
+        <input class="input-control" required data-ref="name" />
+      </div>
+      <div class="grid-2">
+        <div>
+          <label class="field-label">Segmento</label>
+          <select class="select-control" data-ref="segment">
+            <option value="Todos">Todos</option>
+            <option value="VIP">VIP</option>
+            <option value="Corporativo">Corporativo</option>
+            <option value="Vacacional">Vacacional</option>
+            <option value="Grupo">Grupo</option>
+            <option value="Larga Estadía">Larga Estadía</option>
+          </select>
+        </div>
+        <div>
+          <label class="field-label">Canal</label>
+          <select class="select-control" data-ref="channel">
+            <option value="Email">Email</option>
+            <option value="WhatsApp">WhatsApp</option>
+            <option value="SMS">SMS</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label class="field-label">Asunto / Mensaje principal</label>
+        <input class="input-control" required data-ref="subject" />
+      </div>
+      <div class="row-wrap justify-end pt-2">
+        <button type="button" class="btn btn-outline-muted" data-ref="cancel-btn">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Lanzar campaña</button>
+      </div>
+    </form>
+  </template>
+
+  <template data-tpl="modal-encuesta">
+    <form class="stack-md">
+      <div>
+        <label class="field-label">Huésped</label>
+        <select class="select-control" data-ref="guest"></select>
+      </div>
+      <div class="grid-2">
+        <div>
+          <label class="field-label">Calificación Global (1-5)</label>
+          <input type="number" min="1" max="5" class="input-control font-mono" data-ref="overall" />
+        </div>
+        <div>
+          <label class="field-label">Limpieza (1-5)</label>
+          <input type="number" min="1" max="5" class="input-control font-mono" data-ref="cleanliness" />
+        </div>
+        <div>
+          <label class="field-label">Servicio (1-5)</label>
+          <input type="number" min="1" max="5" class="input-control font-mono" data-ref="service" />
+        </div>
+        <div>
+          <label class="field-label">NPS (0-10)</label>
+          <input type="number" min="0" max="10" class="input-control font-mono" data-ref="nps" />
+        </div>
+      </div>
+      <div>
+        <label class="field-label">Comentarios</label>
+        <textarea rows="2" class="textarea-control" data-ref="comment"></textarea>
+      </div>
+      <div class="row-wrap justify-end pt-2">
+        <button type="button" class="btn btn-outline-muted" data-ref="cancel-btn">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Guardar encuesta</button>
+      </div>
+    </form>
+  </template>
+</div>

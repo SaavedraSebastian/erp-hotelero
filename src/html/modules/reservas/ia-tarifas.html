@@ -1,0 +1,58 @@
+<div class="stack-md">
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <h2 class="card-title">Panel de Tarifas Dinámicas Explicables</h2>
+        <p class="card-subtitle">Recomendaciones basadas en ocupación actual y lista de espera. Ningún precio cambia sin confirmación humana explícita.</p>
+      </div>
+    </div>
+    <div class="table-scroll">
+      <table class="erp-table">
+        <thead>
+          <tr>
+            <th>Categoría</th>
+            <th class="text-right">Demanda</th>
+            <th class="text-right">Tarifa Actual</th>
+            <th class="text-right">Sugerida IA</th>
+            <th>Justificación explicable</th>
+            <th class="text-right">Confirmación humana</th>
+          </tr>
+        </thead>
+        <tbody data-ref="dynamic-rates-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="row-gap-sm">
+        <span data-ref="noshow-icon"></span>
+        <h2 class="card-title">Predicción de Riesgo de No-Show (Próximas Llegadas)</h2>
+      </div>
+    </div>
+    <div class="divide-y" data-ref="noshow-list"></div>
+  </div>
+
+  <div data-ref="advisor-slot"></div>
+</div>
+
+<template data-tpl="fila-tarifa-ia">
+  <tr>
+    <td class="font-semibold text-navy" data-ref="category"></td>
+    <td class="text-right font-mono text-xs text-slate-700" data-ref="demand"></td>
+    <td class="text-right font-mono text-xs text-slate-700" data-ref="current-rate"></td>
+    <td class="text-right font-mono text-xs font-bold" data-ref="suggested-rate"></td>
+    <td class="text-xs text-slate-600" data-ref="reason"></td>
+    <td class="text-right" data-ref="action"></td>
+  </tr>
+</template>
+
+<template data-tpl="fila-noshow-ia">
+  <div class="row-between p-4">
+    <div>
+      <div class="text-xs font-semibold text-navy" data-ref="title"></div>
+      <div class="text-11 text-slate-500 mt-0.5" data-ref="factors"></div>
+    </div>
+    <div class="row-wrap gap-3 items-center" data-ref="right"></div>
+  </div>
+</template>

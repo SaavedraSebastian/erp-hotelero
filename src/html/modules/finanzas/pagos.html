@@ -1,0 +1,63 @@
+<div class="grid-2-lg">
+  <div class="card card-pad stack-md">
+    <div>
+      <h2 class="card-title row-gap-sm">
+        <span data-ref="pay-icon"></span>
+        <span>Registrar Pago o Abono Parcial</span>
+      </h2>
+      <p class="card-subtitle mt-1">Actualiza automáticamente el saldo del Folio (habilitando Check-out en Recepción) e ingresa el monto en el turno de Caja abierto.</p>
+    </div>
+
+    <div>
+      <label class="field-label">Folio del huésped</label>
+      <select class="select-control" data-ref="folio-select"></select>
+    </div>
+
+    <div class="grid-2">
+      <div>
+        <label class="field-label">Monto a pagar (S/)</label>
+        <input type="number" step="0.5" min="1" class="input-control font-mono" data-ref="amount-input" />
+      </div>
+      <div>
+        <label class="field-label">Método de pago</label>
+        <select class="select-control" data-ref="method-select">
+          <option value="Tarjeta Crédito/Débito">Tarjeta Crédito/Débito</option>
+          <option value="Efectivo">Efectivo</option>
+          <option value="Transferencia">Transferencia</option>
+          <option value="Yape / Plin">Yape / Plin</option>
+        </select>
+      </div>
+    </div>
+
+    <div>
+      <label class="field-label">Referencia / N° Operación</label>
+      <input class="input-control font-mono" placeholder="Ej. VOU-99104 / OP-3321" data-ref="ref-input" />
+    </div>
+
+    <button type="button" class="btn btn-teal hidden" data-ref="confirm-btn">
+      <span data-ref="confirm-icon"></span>
+      <span>Confirmar Pago en Folio y Caja</span>
+    </button>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title" data-ref="pending-title">Saldos Pendientes por Liquidar</h2>
+    </div>
+    <div class="divide-list" data-ref="pending-list"></div>
+  </div>
+</div>
+
+<template data-tpl="pagos-todos-liquidados">
+  <div class="p-4 text-xs text-slate-500">Todos los folios se encuentran liquidados.</div>
+</template>
+
+<template data-tpl="fila-folio-pendiente">
+  <div class="p-4 row-between">
+    <div>
+      <div class="text-xs font-bold text-navy" data-ref="title"></div>
+      <div class="text-11 font-mono text-slate-500 mt-0.5" data-ref="paid-meta"></div>
+    </div>
+    <div class="font-mono font-bold text-warning" data-ref="balance"></div>
+  </div>
+</template>

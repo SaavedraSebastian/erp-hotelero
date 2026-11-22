@@ -1,0 +1,52 @@
+<div class="stack-md">
+  <div class="row-between">
+    <p class="text-xs text-slate-600">Preparación de boletas, facturas y notas de crédito internas con vista previa y trazabilidad.</p>
+    <button type="button" class="btn btn-primary btn-sm hidden" data-ref="issue-btn">
+      <span data-ref="issue-icon"></span>
+      <span>Emitir comprobante</span>
+    </button>
+  </div>
+
+  <div class="card">
+    <div class="table-scroll">
+      <table class="erp-table">
+        <thead>
+          <tr>
+            <th>Documento</th>
+            <th>Cliente / Doc.</th>
+            <th class="text-right">Subtotal / IGV</th>
+            <th class="text-right">Total</th>
+            <th>Estado</th>
+            <th class="text-right">Acciones</th>
+          </tr>
+        </thead>
+        <tbody data-ref="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<template data-tpl="fila-comprobante">
+  <tr>
+    <td>
+      <div class="font-semibold text-navy" data-ref="doc-title"></div>
+      <div class="text-11 font-mono text-slate-400" data-ref="issued-at"></div>
+    </td>
+    <td>
+      <div class="font-medium text-navy" data-ref="customer-name"></div>
+      <div class="text-11 font-mono text-slate-400" data-ref="customer-doc"></div>
+    </td>
+    <td class="text-right font-mono text-slate-600" data-ref="subtotal-igv"></td>
+    <td class="text-right font-mono font-bold text-navy" data-ref="total"></td>
+    <td data-ref="status"></td>
+    <td class="text-right">
+      <div class="row-wrap justify-end">
+        <button type="button" class="btn btn-outline btn-xs" data-ref="preview-btn">
+          <span data-ref="preview-icon"></span>
+          <span>Vista previa</span>
+        </button>
+        <button type="button" class="btn btn-danger-outline btn-xs hidden" data-ref="void-btn">Anular</button>
+      </div>
+    </td>
+  </tr>
+</template>

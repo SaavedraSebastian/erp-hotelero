@@ -1,0 +1,8 @@
+{
+  "name": "SGH-ERP — Sistema de Gestión Hotelera con IA",
+  "description": "ERP hotelero",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

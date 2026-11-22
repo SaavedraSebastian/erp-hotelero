@@ -1,0 +1,23 @@
+<div class="grid-3" data-ref="grid"></div>
+
+<template data-tpl="card-personal">
+  <div class="card card-pad stack-md">
+    <div class="row-between items-start">
+      <div>
+        <div class="text-11 font-semibold text-teal" data-ref="kicker"></div>
+        <h3 class="text-sm font-bold text-navy mt-0.5" data-ref="name"></h3>
+        <div class="text-xs text-slate-500" data-ref="specialty"></div>
+      </div>
+      <div data-ref="availability"></div>
+    </div>
+    <div class="stack-xs">
+      <div class="row-between text-xs">
+        <span class="text-slate-500">Carga asignada</span>
+        <span class="font-mono font-semibold text-navy" data-ref="load-text"></span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill" data-ref="progress-fill"></div>
+      </div>
+    </div>
+  </div>
+</template>

@@ -1,0 +1,46 @@
+<div class="split-layout-3">
+  <form class="card card-pad stack-md" data-ref="srv-form">
+    <h3 class="card-title">Registrar Consumo de Servicio (Spa, Lavandería, Cochera)</h3>
+
+    <div>
+      <label class="field-label">Servicio</label>
+      <select class="select-control text-xs" data-ref="service-select"></select>
+    </div>
+
+    <div>
+      <label class="field-label">Modalidad</label>
+      <select class="select-control text-xs" data-ref="payment-mode">
+        <option value="Cargo a Habitación">Cargo a Habitación (Folio)</option>
+        <option value="Pago Directo">Pago Directo en Caja</option>
+      </select>
+    </div>
+
+    <div data-ref="room-wrap">
+      <label class="field-label">Habitación ocupada</label>
+      <select class="select-control text-xs" data-ref="room-select"></select>
+    </div>
+
+    <button type="submit" class="btn btn-teal w-full hidden" data-ref="submit-btn">Registrar Servicio</button>
+  </form>
+
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Tarifario Activo de Servicios</h3>
+    </div>
+    <div class="divide-list" data-ref="services-list"></div>
+  </div>
+</div>
+
+<template data-tpl="fila-tarifa-servicio">
+  <div class="p-4 row-between">
+    <div>
+      <div class="text-xs font-semibold text-navy">
+        <span data-ref="name"></span>
+        <span class="text-slate-400"> · </span>
+        <span class="text-teal" data-ref="area"></span>
+      </div>
+      <div class="text-11 text-slate-500 mt-0.5" data-ref="desc"></div>
+    </div>
+    <span class="font-mono font-semibold text-navy shrink-0" data-ref="price"></span>
+  </div>
+</template>

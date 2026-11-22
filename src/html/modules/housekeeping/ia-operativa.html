@@ -1,0 +1,47 @@
+<div class="stack-md">
+  <div class="grid-2 items-start">
+    <div class="card card-pad stack-md">
+      <div>
+        <h2 class="card-title">Asignación Óptima Sugerida de Limpieza</h2>
+        <p class="card-subtitle mt-0.5">Prioriza habitaciones sucias por llegadas confirmadas y balance de carga del personal.</p>
+      </div>
+      <div class="divide-y" data-ref="cleaning-suggestions"></div>
+    </div>
+
+    <div class="card card-pad stack-md">
+      <div>
+        <div class="row-gap-sm">
+          <span data-ref="alert-icon"></span>
+          <h2 class="card-title">Alertas de Mantenimiento Predictivo</h2>
+        </div>
+        <p class="card-subtitle mt-0.5">Activos con alta probabilidad de falla estimada por horas de operación y condición.</p>
+      </div>
+      <div class="divide-y" data-ref="predictive-alerts"></div>
+    </div>
+  </div>
+
+  <div data-ref="advisor-slot"></div>
+</div>
+
+<template data-tpl="fila-asignacion-ia">
+  <div class="py-3 row-between items-center gap-3">
+    <div>
+      <div class="text-xs font-semibold text-navy" data-ref="title"></div>
+      <div class="text-11 text-slate-500 mt-0.5" data-ref="detail"></div>
+    </div>
+    <button type="button" class="btn btn-teal btn-xs hidden" data-ref="apply-btn">Aplicar</button>
+  </div>
+</template>
+
+<template data-tpl="fila-alerta-predictiva">
+  <div class="py-3 row-between items-start gap-3">
+    <div>
+      <div class="text-xs font-semibold text-navy" data-ref="title"></div>
+      <div class="text-11 text-slate-500 mt-0.5" data-ref="detail"></div>
+    </div>
+    <div class="text-right shrink-0">
+      <div class="font-mono text-xs font-bold text-danger" data-ref="risk"></div>
+      <button type="button" class="btn btn-link text-teal text-11 hidden" data-ref="schedule-btn">Programar preventivo</button>
+    </div>
+  </div>
+</template>

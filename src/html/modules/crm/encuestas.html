@@ -1,0 +1,29 @@
+<div class="stack-md">
+  <div class="row-wrap justify-end hidden" data-ref="header-actions">
+    <button type="button" class="btn btn-primary btn-sm" data-ref="new-btn">
+      <span data-ref="new-icon"></span>
+      <span>Registrar encuesta</span>
+    </button>
+  </div>
+
+  <div class="grid-3" data-ref="kpis"></div>
+
+  <div class="stack-sm" data-ref="list"></div>
+</div>
+
+<template data-tpl="fila-encuesta">
+  <div class="card card-pad row-between">
+    <div class="stack-xs">
+      <div>
+        <strong class="text-xs text-navy" data-ref="guest"></strong>
+        <span class="text-11 font-mono text-slate-400" data-ref="date"></span>
+      </div>
+      <p class="text-xs text-slate-600" data-ref="comment"></p>
+      <div class="text-11 font-mono text-teal" data-ref="breakdown"></div>
+    </div>
+    <div class="text-right font-mono shrink-0">
+      <div class="text-sm font-bold text-teal" data-ref="score"></div>
+      <div class="text-11 text-slate-500" data-ref="nps"></div>
+    </div>
+  </div>
+</template>

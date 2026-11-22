@@ -1,0 +1,42 @@
+<div class="stack-md">
+  <div class="row-between">
+    <div class="alert alert-info flex-1">
+      <div>
+        <strong>Atención Integrada:</strong> Registrar un reclamo sobre habitación o infraestructura genera automáticamente una Incidencia en Mantenimiento. Al completarse la Orden de Trabajo allá, este reclamo se actualiza automáticamente a Resuelto.
+      </div>
+    </div>
+    <button type="button" class="btn btn-primary btn-sm hidden" data-ref="new-btn">
+      <span data-ref="new-icon"></span>
+      <span>Nuevo reclamo</span>
+    </button>
+  </div>
+
+  <div class="stack-sm" data-ref="list"></div>
+</div>
+
+<template data-tpl="fila-reclamo">
+  <div class="card card-pad stack-sm">
+    <div class="row-between items-start">
+      <div>
+        <div class="font-mono text-xs font-bold text-navy" data-ref="title"></div>
+        <div class="text-11 text-teal font-medium mt-0.5" data-ref="meta"></div>
+      </div>
+      <div class="row-gap-sm shrink-0">
+        <div data-ref="status"></div>
+        <button type="button" class="btn btn-teal btn-xs hidden" data-ref="resolve-btn">Marcar Resuelto</button>
+      </div>
+    </div>
+    <p class="text-xs text-slate-700 pb-2 border-b-soft" data-ref="description"></p>
+    <div class="stack-xs" data-ref="history-list"></div>
+  </div>
+</template>
+
+<template data-tpl="item-historial-reclamo">
+  <div class="text-11 text-slate-500">
+    <span class="font-mono text-slate-400" data-ref="timestamp"></span>
+    <span> · </span>
+    <strong class="text-navy" data-ref="user"></strong>
+    <span>: </span>
+    <span data-ref="note"></span>
+  </div>
+</template>

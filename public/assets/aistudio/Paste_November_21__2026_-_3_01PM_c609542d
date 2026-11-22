@@ -1,0 +1,1345 @@
+PROMPT MAESTRO — INTEGRACIÓN DEL SGH-ERP CON POSTGRESQL/SUPABASE
+
+Actúa como arquitecto de software senior, desarrollador backend experto en Node.js, TypeScript, Express y PostgreSQL, especialista en Supabase, seguridad de aplicaciones empresariales, privacidad de datos, sistemas ERP y desarrollo frontend mantenible.
+
+Debes revisar, corregir e integrar el Sistema de Gestión Hotelera SGH-ERP con la base de datos PostgreSQL alojada en Supabase.
+
+El sistema está compuesto por cinco módulos:
+
+- Módulo 01: Reservas y Recepción.
+- Módulo 02: Housekeeping y Mantenimiento.
+- Módulo 03: Servicios Externos, POS, Restaurante y Almacén.
+- Módulo 04: Facturación y Finanzas.
+- Módulo 05: CRM y Atención al Huésped.
+
+La base de datos ya contiene los esquemas:
+
+- g1_reservas
+- g2_housekeeping
+- g3_servicios
+- g4_finanzas
+- g5_crm
+
+La base de datos, sus migraciones y restricciones constituyen la fuente de verdad. No inventes tablas, columnas, estados, relaciones, roles o procedimientos. Antes de modificar código, inspecciona el proyecto y contrasta cada funcionalidad con la estructura real de PostgreSQL.
+
+Firebase Studio se utiliza como entorno de desarrollo asistido. No reemplaces Supabase Auth por Firebase Authentication ni incorpores Firestore como segunda base de datos. La persistencia del ERP debe permanecer exclusivamente en PostgreSQL/Supabase.
+
+======================================================================
+1. OBJETIVO GENERAL
+======================================================================
+
+Reemplazar la persistencia simulada, SQLite, localStorage y cualquier acceso directo del navegador a las tablas de Supabase por una arquitectura segura:
+
+Frontend
+    ↓ HTTPS + JWT
+API REST en Node.js/Express
+    ↓ conexión PostgreSQL privada
+Supabase PostgreSQL
+
+La aplicación deberá:
+
+- Autenticar usuarios mediante Supabase Auth.
+- Autorizar acciones mediante RBAC.
+- Usar PostgreSQL como única fuente de verdad.
+- Ejecutar transacciones reales para operaciones compuestas.
+- Respetar restricciones, triggers y ciclos de estado.
+- Implementar auditoría y trazabilidad.
+- Proteger datos personales.
+- Separar frontend, backend y acceso a datos.
+- Mantener código modular, probado y documentado.
+- Conservar la experiencia responsive del ERP.
+- Evitar funcionalidades simuladas cuando ya exista una operación real en el backend.
+
+No realices una reescritura completa sin analizar primero la arquitectura actual. Trabaja progresivamente y conserva componentes funcionales que puedan reutilizarse.
+
+======================================================================
+2. ARQUITECTURA BACKEND
+======================================================================
+
+Mantén el backend Node.js y TypeScript existente. Si existe server.ts con Express, continúa con Express; no cambies de framework sin una justificación técnica.
+
+Organiza el backend por capas:
+
+server/
+├── config/
+│   ├── env.ts
+│   └── database.ts
+├── middleware/
+│   ├── authenticate.ts
+│   ├── authorize.ts
+│   ├── validate.ts
+│   ├── error-handler.ts
+│   ├── rate-limit.ts
+│   └── request-context.ts
+├── modules/
+│   ├── m1/
+│   │   ├── routes.ts
+│   │   ├── controller.ts
+│   │   ├── service.ts
+│   │   ├── repository.ts
+│   │   └── schemas.ts
+│   ├── m2/
+│   ├── m3/
+│   ├── m4/
+│   ├── m5/
+│   ├── seguridad/
+│   └── ia/
+├── shared/
+│   ├── errors/
+│   ├── database/
+│   ├── pagination/
+│   ├── audit/
+│   └── types/
+├── app.ts
+└── server.ts
+
+Responsabilidades:
+
+- Routes: definición de rutas y middleware.
+- Controller: entrada y respuesta HTTP.
+- Service: reglas de negocio y transacciones.
+- Repository: consultas PostgreSQL parametrizadas.
+- Schemas: validación de solicitudes y respuestas.
+- Middleware: autenticación, autorización, errores y seguridad.
+
+No escribas SQL directamente en controladores. No concentres toda la aplicación en server.ts. Evita archivos excesivamente grandes y dependencias circulares.
+
+Versiona la API:
+
+/api/v1/session/*
+/api/v1/m1/*
+/api/v1/m2/*
+/api/v1/m3/*
+/api/v1/m4/*
+/api/v1/m5/*
+/api/v1/dashboard/*
+/api/v1/ai/*
+
+No implementes endpoints genéricos que permitan modificar cualquier tabla o estado.
+
+======================================================================
+3. CONEXIÓN CON SUPABASE POSTGRESQL
+======================================================================
+
+Utiliza el paquete pg o postgres para la conexión desde el servidor.
+
+DATABASE_URL debe almacenarse como secreto del entorno de ejecución. Nunca debe:
+
+- Aparecer en el repositorio.
+- Enviarse al navegador.
+- Tener prefijos NEXT_PUBLIC_, PUBLIC_ o VITE_.
+- Imprimirse en logs.
+- Incluirse en mensajes de error para el usuario.
+- Compartirse con servicios de terceros.
+
+Valida las variables de entorno al iniciar la aplicación. Si falta una variable obligatoria, el servidor debe detenerse con un mensaje controlado, sin revelar credenciales.
+
+Configura el pool con:
+
+- Máximo de conexiones adecuado.
+- Timeout de conexión.
+- Timeout de consultas.
+- Cierre ordenado del pool.
+- SSL según la configuración de Supabase.
+- Manejo de reconexión sin crear pools nuevos por petición.
+
+No uses la cuenta propietaria o postgres para el funcionamiento ordinario. Utiliza un rol técnico de aplicación con privilegios mínimos, por ejemplo sgh_erp_api, miembro de un rol agrupador NOLOGIN llamado sgh_erp_backend.
+
+El rol del backend solo debe heredar privilegios operativos:
+
+- rol_g1_reservas
+- rol_g2_backend
+- g3_app
+- rol operativo de G4
+- g5_crm_app
+
+No otorgues al backend roles propietarios, de desarrollo o administración como g3_owner, g3_dba o g5_crm_owner.
+
+======================================================================
+4. AUTENTICACIÓN
+======================================================================
+
+Utiliza Supabase Auth como único proveedor de identidad.
+
+El frontend puede conservar @supabase/supabase-js exclusivamente para:
+
+- Iniciar sesión.
+- Cerrar sesión.
+- Renovar el token.
+- Recuperar la sesión autenticada.
+
+El frontend no debe usar supabase-js para consultar o modificar directamente las tablas del ERP.
+
+Cada petición a Express enviará:
+
+Authorization: Bearer <access_token>
+
+El backend debe:
+
+1. Obtener el Bearer Token.
+2. Verificar criptográficamente su firma.
+3. Validar emisor, audiencia y expiración.
+4. Obtener auth_user_id.
+5. Buscar el usuario del ERP vinculado.
+6. Verificar que el usuario esté activo.
+7. Cargar sus roles y permisos.
+8. Crear el contexto de la petición.
+9. Rechazar la operación si no está autenticado o autorizado.
+
+No basta con decodificar el JWT.
+
+No almacenes password_hash, salt ni contraseñas en las tablas del ERP. Las credenciales pertenecen exclusivamente a Supabase Auth.
+
+La tabla maestra del ERP debe vincularse mediante:
+
+auth_user_id UUID UNIQUE REFERENCES auth.users(id)
+
+Si la tabla relacionada con auth.users debe crearse, la migración debe ejecutarse desde el SQL Editor o mediante un usuario con los permisos adecuados. No concedas acceso directo al esquema auth desde el navegador.
+
+======================================================================
+5. USUARIOS, ROLES Y PERMISOS RBAC
+======================================================================
+
+Centraliza la identidad y autorización mediante una estructura normalizada:
+
+seguridad.usuario_sistema
+seguridad.rol
+seguridad.permiso
+seguridad.usuario_rol
+seguridad.rol_permiso
+
+La tabla usuario_sistema debe poder relacionarse de forma transitoria con las identidades existentes:
+
+- auth_user_id de Supabase Auth.
+- id_personal_g2.
+- id_usuario_g4.
+- código interno de usuario.
+- departamento.
+- turno.
+- estado.
+- fecha de creación.
+- fecha de actualización.
+
+No utilices un JSONB como única fuente de permisos. Los permisos deben mantenerse en rol_permiso para garantizar integridad, auditoría y consistencia.
+
+La cantidad de roles no debe hardcodearse como “16” o “17”. Primero debe definirse y cargarse un catálogo oficial que contemple los perfiles reales de todos los módulos.
+
+Para el Módulo 03 deben conservarse, como mínimo, las responsabilidades de:
+
+- Administrador de servicios/POS.
+- Personal de atención.
+- Supervisor autorizado.
+- Personal de restaurante.
+- Personal de cocina.
+- Responsable de almacén.
+- Responsable de compras.
+
+Los códigos del frontend deben mapearse a códigos oficiales del backend. No deben existir tres matrices independientes en:
+
+- server/types.ts
+- server/auth-rbac.ts
+- src/js/data/rbac.js
+
+La base de datos será la fuente de verdad.
+
+Crea un endpoint:
+
+GET /api/v1/session/me
+
+Respuesta esperada:
+
+{
+  "usuario": {
+    "id": "UUID",
+    "codigo": "USR-0001",
+    "nombre": "Usuario del sistema",
+    "departamento": "Servicios"
+  },
+  "roles": [
+    "ADMIN_SERVICIOS"
+  ],
+  "permisos": [
+    "m3.consumo.crear",
+    "m3.consumo.consultar",
+    "m3.comanda.actualizar"
+  ]
+}
+
+El frontend utilizará la respuesta para adaptar navegación y botones. Sin embargo, ocultar un botón no constituye seguridad. Cada endpoint debe volver a validar el permiso.
+
+Ejemplos de permisos:
+
+m1.reserva.consultar
+m1.reserva.crear
+m1.checkin.registrar
+m2.limpieza.asignar
+m2.mantenimiento.cerrar
+m3.consumo.crear
+m3.consumo.anular
+m3.precio.modificar
+m3.compra.preparar
+m3.compra.aprobar
+m3.compra.recibir
+m4.comprobante.emitir
+m4.gasto.aprobar
+m5.reclamo.atender
+m5.compensacion.aprobar
+seguridad.usuario.administrar
+auditoria.consultar
+
+======================================================================
+6. TRANSACCIONES Y CONTEXTO DE AUDITORÍA
+======================================================================
+
+Toda operación compuesta debe ejecutarse con una única conexión obtenida del pool.
+
+Patrón obligatorio:
+
+const client = await pool.connect();
+
+try {
+  await client.query("BEGIN");
+
+  await client.query(
+    `select
+       set_config('app.usuario_id', $1, true),
+       set_config('app.usuario', $2, true)`,
+    [authUserId, codigoUsuario]
+  );
+
+  // Consultas y mutaciones de la operación.
+
+  await client.query("COMMIT");
+} catch (error) {
+  await client.query("ROLLBACK");
+  throw error;
+} finally {
+  client.release();
+}
+
+No uses pool.query() de manera independiente entre BEGIN y COMMIT.
+
+Contextos:
+
+- app.usuario_id: UUID de Supabase Auth, usado por G3.
+- app.usuario: código interno de máximo 30 caracteres, usado por G5.
+- app.motivo_cambio_precio: motivo obligatorio cuando cambia precio en G3.
+
+Para el cambio de precio:
+
+await client.query(
+  "select set_config('app.motivo_cambio_precio', $1, true)",
+  [motivo]
+);
+
+Nunca concatenes valores dentro del SQL. Utiliza parámetros $1, $2, etc.
+
+Las operaciones sensibles deben usar bloqueo o control de concurrencia cuando corresponda:
+
+- SELECT ... FOR UPDATE.
+- Restricciones únicas.
+- Versionado optimista.
+- Idempotency-Key.
+- Triggers existentes.
+- Niveles de aislamiento apropiados.
+
+No dependas únicamente de validaciones del frontend.
+
+======================================================================
+7. DISEÑO DE LA API
+======================================================================
+
+Utiliza endpoints de acción para operaciones con ciclos de estado.
+
+Ejemplos:
+
+POST /api/v1/m3/comandas
+POST /api/v1/m3/comandas/:id/iniciar-preparacion
+POST /api/v1/m3/comandas/:id/marcar-lista
+POST /api/v1/m3/comandas/:id/entregar
+POST /api/v1/m3/comandas/:id/cancelar
+
+POST /api/v1/m3/consumos
+POST /api/v1/m3/consumos/:id/confirmar
+POST /api/v1/m3/consumos/:id/descartar
+POST /api/v1/m3/consumos/:id/anular
+
+POST /api/v1/m3/ordenes-compra
+POST /api/v1/m3/ordenes-compra/:id/aprobar
+POST /api/v1/m3/ordenes-compra/:id/rechazar
+POST /api/v1/m3/ordenes-compra/:id/enviar
+POST /api/v1/m3/ordenes-compra/:id/recepciones
+
+No implementes:
+
+PATCH /api/v1/tablas/:tabla/:id
+
+Tampoco permitas que el cliente envíe arbitrariamente el estado final.
+
+Las listas deben soportar:
+
+- Búsqueda.
+- Filtros.
+- Ordenamiento.
+- Paginación.
+- Límite máximo.
+- Rango de fechas.
+- Estado.
+- Resumen de resultados.
+
+Formato de respuesta:
+
+{
+  "data": [],
+  "pagination": {
+    "page": 1,
+    "pageSize": 20,
+    "total": 150,
+    "totalPages": 8
+  }
+}
+
+Formato de error:
+
+{
+  "error": {
+    "code": "M3_TRANSICION_INVALIDA",
+    "message": "La comanda no puede pasar directamente a entregada.",
+    "fieldErrors": {}
+  },
+  "requestId": "UUID"
+}
+
+No envíes stack traces ni detalles SQL al navegador.
+
+======================================================================
+8. VALIDACIÓN DE DATOS
+======================================================================
+
+Valida toda entrada en el backend utilizando Zod, Valibot o una biblioteca equivalente.
+
+Validar:
+
+- Tipos.
+- Longitudes.
+- Campos obligatorios.
+- Enumeraciones.
+- Fechas.
+- Rangos numéricos.
+- UUID.
+- BIGINT como string.
+- Identificadores VARCHAR.
+- Motivos obligatorios.
+- Consistencia entre campos.
+- Datos permitidos por rol.
+
+Las restricciones PostgreSQL deben mantenerse aunque exista validación en TypeScript.
+
+Mapea errores PostgreSQL:
+
+- 23505: conflicto por valor duplicado.
+- 23503: referencia inexistente o en uso.
+- 23514: regla de negocio incumplida.
+- 42501: permiso insuficiente.
+- 40001: conflicto de serialización.
+- 40P01: deadlock.
+- 22P02: formato inválido.
+
+Devuelve mensajes funcionales y comprensibles, sin revelar nombres internos innecesarios.
+
+======================================================================
+9. IDENTIFICADORES Y SERIALIZACIÓN
+======================================================================
+
+No conviertas BIGINT a Number en JavaScript.
+
+Reglas:
+
+- BIGINT: string en JSON.
+- UUID: string.
+- VARCHAR(36): string.
+- INTEGER: number.
+- NUMERIC monetario: string o formato decimal controlado.
+- TIMESTAMPTZ: ISO 8601.
+- DATE: YYYY-MM-DD.
+
+Ejemplo:
+
+{
+  "id_estadia": "9823456789012345",
+  "id_usuario": 14,
+  "importe": "145.50",
+  "fecha_hora": "2026-11-21T10:30:00-05:00"
+}
+
+Los identificadores son valores opacos. No se suman, restan ni reinterpretan.
+
+======================================================================
+10. PRIVACIDAD Y PROTECCIÓN DE DATOS
+======================================================================
+
+Aplica principios de privacidad compatibles con ISO/IEC 27701, sin afirmar que el sistema está certificado.
+
+Principios obligatorios:
+
+1. Minimización:
+   Solo solicitar y procesar datos necesarios.
+
+2. Finalidad:
+   Cada dato debe tener una finalidad funcional documentada.
+
+3. Consentimiento:
+   Registrar consentimiento y fecha cuando corresponda.
+
+4. Marketing:
+   marketing_opt_in debe ser independiente del consentimiento general.
+
+5. Acceso restringido:
+   Solo roles autorizados pueden consultar datos personales.
+
+6. Trazabilidad:
+   Registrar quién accede o modifica información sensible.
+
+7. Retención:
+   Definir tiempos de conservación y procedimientos de anonimización.
+
+8. Rectificación:
+   Permitir corrección controlada de información del huésped.
+
+9. Confidencialidad:
+   Evitar datos personales en logs, URLs y mensajes de error.
+
+10. IA responsable:
+    No enviar a modelos información personal que no sea indispensable.
+
+Datos sensibles que no deben aparecer en logs generales:
+
+- Documento completo.
+- Correo completo.
+- Teléfono completo.
+- Dirección.
+- Datos de pago.
+- Contraseñas.
+- JWT.
+- DATABASE_URL.
+- Contenido completo de solicitudes personales.
+
+Utiliza enmascaramiento:
+
+- DNI: ******42
+- Correo: m***@dominio.com
+- Teléfono: ******321
+
+No uses datos personales reales en semillas, pruebas o capturas de demostración.
+
+No almacenes información personal dentro de localStorage.
+
+Las exportaciones deben:
+
+- Exigir permiso.
+- Registrar auditoría.
+- Aplicar filtros.
+- Limitar columnas.
+- Evitar exportaciones masivas no justificadas.
+
+======================================================================
+11. SEGURIDAD DE APLICACIÓN
+======================================================================
+
+Implementa:
+
+- HTTPS obligatorio en producción.
+- Helmet o cabeceras equivalentes.
+- CORS con orígenes permitidos explícitos.
+- Rate limiting.
+- Límites de tamaño de body.
+- Validación MIME para archivos.
+- SQL parametrizado.
+- Protección contra XSS.
+- Sanitización de contenido visible.
+- Política de errores centralizada.
+- Timeout de solicitudes.
+- Request ID.
+- Logs estructurados.
+- Rotación de secretos.
+- Dependabot o mecanismo equivalente.
+- Auditoría de dependencias.
+- App Check si la API se despliega como backend personalizado en Firebase.
+
+Si se utilizan cookies:
+
+- HttpOnly.
+- Secure.
+- SameSite.
+- Protección CSRF.
+
+Si se utiliza Bearer Token:
+
+- No guardarlo manualmente en múltiples lugares.
+- No imprimirlo.
+- No enviarlo por query string.
+- Renovarlo mediante Supabase Auth.
+
+La cuenta del backend debe seguir el principio de mínimo privilegio. No utilizar BYPASSRLS salvo una decisión arquitectónica formal y documentada.
+
+Si algún esquema se expone mediante Data API:
+
+- Habilitar RLS.
+- Revocar permisos innecesarios de anon y authenticated.
+- Crear políticas explícitas.
+- Probar operaciones permitidas y denegadas.
+
+======================================================================
+12. MIGRACIONES DE BASE DE DATOS
+======================================================================
+
+No ejecutes CREATE TABLE o ALTER TABLE automáticamente desde server.ts.
+
+Toda modificación debe estar en un archivo de migración versionado:
+
+migrations/
+├── 001_seguridad_rbac.sql
+├── 002_vinculos_usuarios.sql
+├── 003_permisos_backend.sql
+├── 004_politicas_rls.sql
+└── 005_indices.sql
+
+Cada migración debe:
+
+- Tener propósito documentado.
+- Incluir precondiciones.
+- Ejecutarse dentro de transacción cuando sea posible.
+- Evitar pérdida de datos.
+- Ser idempotente cuando corresponda.
+- Incluir verificación posterior.
+- Definir rollback o estrategia de recuperación.
+- No incluir contraseñas.
+- No borrar esquemas completos.
+- No usar DROP CASCADE sin autorización explícita.
+
+Antes de cambiar la base:
+
+- Inspeccionar information_schema.
+- Verificar tipos reales.
+- Verificar claves foráneas.
+- Verificar datos existentes.
+- Detectar columnas nullable.
+- Revisar restricciones y triggers.
+
+No asumir que una columna existe porque aparezca en una interfaz.
+
+======================================================================
+13. FRONTEND Y ESTADO DE LA APLICACIÓN
+======================================================================
+
+erpStore dejará de utilizar un JSON gigante y localStorage como fuente de datos.
+
+El frontend deberá:
+
+- Consumir /api/v1/*.
+- Mantener únicamente estado temporal de interfaz.
+- Implementar cache controlada.
+- Invalidar cache después de mutaciones.
+- Mostrar carga, error, vacío y éxito.
+- Cancelar solicitudes obsoletas.
+- Evitar duplicar envíos.
+- Conservar filtros en URL cuando sea útil.
+- Implementar paginación real.
+
+localStorage puede usarse únicamente para preferencias no sensibles:
+
+- Sidebar cerrado.
+- Tema.
+- Tamaño de página.
+- Última vista.
+
+No almacenar allí:
+
+- Reservas.
+- Huéspedes.
+- Consumos.
+- Órdenes.
+- Inventario.
+- Permisos.
+- Datos personales.
+- Resultados financieros.
+
+Conserva HTML, CSS y JavaScript separados. No generes vistas completas mediante enormes cadenas HTML dentro de JavaScript.
+
+Utiliza:
+
+- HTML para estructura y plantillas.
+- CSS para presentación y responsive.
+- JavaScript/TypeScript para comportamiento.
+- Componentes reutilizables.
+- Servicios API centralizados.
+
+Mantén el diseño profesional del ERP:
+
+- Tipografía Barlow.
+- Marrón oscuro y blanco como identidad principal.
+- Amarillo/dorado como acento controlado.
+- Diseño compacto.
+- Tablas funcionales.
+- Filtros alineados.
+- Formularios claros.
+- Modales proporcionales.
+- Sidebar colapsable.
+- Navegación responsive.
+- Sin tarjetas dentro de tarjetas innecesarias.
+- Sin tipografía sobredimensionada.
+- Sin controles excesivamente altos.
+
+La ocultación por permisos mejora la experiencia, pero la seguridad definitiva corresponde al backend.
+
+======================================================================
+14. CONFIGURACIÓN DEL HOTEL
+======================================================================
+
+No reemplaces solamente textos hardcodeados.
+
+Crea una configuración central consultable mediante:
+
+GET /api/v1/configuracion/establecimiento
+
+Debe entregar:
+
+- Nombre del hotel.
+- Nombre comercial.
+- Zona horaria.
+- Moneda.
+- Logo.
+- Número de habitaciones.
+- Número de pisos.
+- Dirección.
+- Fecha operativa.
+
+Usa:
+
+- Hotel Boulevard.
+- Zona horaria America/Lima.
+- Moneda PEN.
+
+La fecha operativa debe provenir del servidor. No depender del reloj del navegador.
+
+======================================================================
+15. REGLAS DEL MÓDULO 01
+======================================================================
+
+Implementar:
+
+- Huéspedes con nombres y apellidos separados.
+- Reservas con una o varias habitaciones.
+- detalle_reserva por habitación.
+- Acompañantes durante check-in.
+- Temporada y canal.
+- Tarifa calculada en backend.
+- Validación de fechas.
+- Estado operativo de habitación proveniente de G2.
+
+v_estado_actual solo contiene habitaciones con historial de cambios. El backend debe partir de g1_reservas.habitacion y realizar LEFT JOIN con la vista.
+
+No calcular tarifas definitivamente en el navegador.
+
+======================================================================
+16. REGLAS DEL MÓDULO 02
+======================================================================
+
+Implementar:
+
+- Transiciones según transicion_permitida.
+- Motivo obligatorio cuando requiere_motivo sea verdadero.
+- Asignación según programacion_turno.
+- Validación de disponibilidad.
+- Motivo de reasignación.
+- Subtipo obligatorio del personal.
+- Datos propios de Limpieza, Técnico o Supervisor.
+- Centro de costo en órdenes.
+- Motivo de espera.
+- Datos de cierre.
+- Protección de órdenes cerradas.
+- Inventario mediante movimiento_insumo.
+
+Nunca modificar stock directamente.
+
+Las operaciones históricas deben permanecer inmutables.
+
+======================================================================
+17. REGLAS DEL MÓDULO 03
+======================================================================
+
+Implementar:
+
+Comandas:
+
+pendiente
+→ en preparación
+→ lista
+→ entregada
+
+Alternativamente:
+
+pendiente
+→ cancelada
+
+La cancelación exige motivo.
+
+Entregar una comanda y crear el consumo correspondiente debe ser una única transacción.
+
+Consumos:
+
+por confirmar
+→ confirmado
+→ anulado
+
+O:
+
+por confirmar
+→ descartado
+
+Descartar y anular exigen motivo.
+
+Los consumos deben registrar:
+
+- Cabecera.
+- Detalle.
+- Cantidad.
+- Precio capturado.
+- Importe de lista.
+- Importe cobrado.
+- Total exacto.
+- Forma de cobro.
+- Usuario responsable.
+
+Los cambios de precio deben registrar:
+
+- Precio anterior.
+- Precio nuevo.
+- Motivo.
+- Usuario.
+- Fecha.
+
+Inventario:
+
+- Artículos.
+- Almacenes.
+- Existencias.
+- Lotes.
+- Vencimientos.
+- Movimientos.
+- Mermas.
+- Ajustes.
+- Recetas.
+- Versiones de receta.
+
+No actualizar saldo directamente. Registrar movimientos.
+
+Compras:
+
+- Preparar orden.
+- Editar orden pendiente.
+- Aprobar o rechazar.
+- Enviar al proveedor.
+- Recibir parcial o totalmente.
+- Registrar cantidades aceptadas y rechazadas.
+- Registrar motivo del rechazo.
+- Generar movimientos de inventario.
+- Registrar costo.
+- Impedir que el preparador apruebe su propia orden cuando la segregación de funciones lo exija.
+
+======================================================================
+18. REGLAS DEL MÓDULO 04
+======================================================================
+
+Implementar:
+
+- Cuentas.
+- Consumos.
+- Transferencia de consumos.
+- Comprobantes.
+- Boleta.
+- Factura.
+- Nota de crédito.
+- Cobros.
+- Billetera digital.
+- Turnos de caja.
+- Gastos.
+- Alertas financieras.
+- Cuentas por cobrar.
+- XML UBL y hash del CPE.
+
+Factura exige RUC válido.
+
+Nota de crédito exige comprobante de referencia y motivo.
+
+Cierre de turno:
+
+- Calcular diferencia.
+- Solicitar justificación si es distinta de cero.
+- Solicitar autorización cuando corresponda.
+- Ejecutar cierre en transacción.
+
+Gastos:
+
+- Pendiente.
+- Aprobado.
+- Rechazado.
+
+La decisión debe registrar aprobador y fecha.
+
+======================================================================
+19. REGLAS DEL MÓDULO 05
+======================================================================
+
+Implementar:
+
+- Perfil del huésped.
+- Preferencias.
+- Segmentación.
+- Puntos.
+- Beneficios.
+- Canjes.
+- Reclamos.
+- Sugerencias.
+- Seguimiento.
+- Compensaciones.
+- Campañas.
+- Opiniones.
+- Reseñas.
+- Encuestas.
+- Solicitudes de huésped.
+
+Los puntos se muestran como movimientos:
+
+- ACUMULACION.
+- CANJE.
+- REVERSION.
+- AJUSTE.
+
+El backend valida saldo mediante v_saldo_puntos.
+
+Campañas:
+
+PROGRAMADA
+→ ACTIVA
+→ CERRADA
+
+O:
+
+PROGRAMADA
+→ CANCELADA
+
+No editar campañas activas o cerradas salvo operaciones expresamente permitidas.
+
+Los reclamos deben mostrar SLA mediante v_tablero_reclamos.
+
+seguimiento_reclamo es histórico e inmutable.
+
+Las compensaciones solo se aplican a reclamos, no a sugerencias.
+
+Las reseñas externas pueden no tener estadía, pero deben respetar el modelo de perfil definido.
+
+======================================================================
+20. INTELIGENCIA ARTIFICIAL
+======================================================================
+
+No utilices un único endpoint genérico que escriba en todas las tablas.
+
+Implementa endpoints por caso:
+
+POST /api/v1/ai/no-show/generar
+POST /api/v1/ai/tarifas/sugerir
+POST /api/v1/ai/housekeeping/proponer
+POST /api/v1/ai/mantenimiento/evaluar
+POST /api/v1/ai/demanda/pronosticar
+POST /api/v1/ai/finanzas/evaluar
+POST /api/v1/ai/asistente/consultar
+
+La IA:
+
+- Lee únicamente datos mínimos y resumidos.
+- No recibe snapshots completos.
+- No recibe credenciales.
+- No ejecuta SQL.
+- No selecciona tablas dinámicamente.
+- No modifica estados directamente.
+- No aprueba compras.
+- No realiza cobros.
+- No anula operaciones.
+- No modifica inventario.
+- No cambia tarifas automáticamente.
+- No accede a datos personales innecesarios.
+
+Valida la salida mediante esquemas estructurados.
+
+Registra cuando corresponda:
+
+- Caso de uso.
+- Modelo.
+- Versión.
+- Fecha.
+- Factores.
+- Confianza.
+- Resultado.
+- Usuario que solicitó el análisis.
+- Decisión humana.
+- Comentario de aceptación o rechazo.
+
+La persona responsable mantiene la decisión final.
+
+Protege los endpoints de IA con:
+
+- Autenticación.
+- Permisos.
+- Rate limiting.
+- Límites de tokens.
+- Timeout.
+- Validación de prompt.
+- Control de costos.
+- Registro sin PII.
+- App Check si se utiliza Firebase para proteger el backend.
+
+No expongas claves de IA en el navegador.
+
+======================================================================
+21. AUDITORÍA Y TRAZABILIDAD
+======================================================================
+
+No presentes las fuentes actuales como un único log global porque tienen alcances diferentes.
+
+Fuentes existentes:
+
+- g1_reservas.historial_reserva.
+- g2_housekeeping.cambio_estado_habitacion.
+- g2_housekeeping.registro_integracion.
+- g3_servicios.registro_intento_acceso.
+- g3_servicios.envio_externo.
+- g4_finanzas.historial_cuenta.
+- g5_crm.log_auditoria.
+
+La interfaz deberá llamarse inicialmente “Bitácoras por módulo”.
+
+Mostrar:
+
+- Fecha.
+- Usuario.
+- Módulo.
+- Operación.
+- Entidad.
+- Identificador.
+- Resultado.
+- Origen.
+- Motivo.
+- Correlación.
+
+No afirmar que historial_reserva o historial_cuenta auditan todo el módulo.
+
+Si se implementa una auditoría transversal, crear una migración específica y documentar:
+
+- Qué eventos se registran.
+- Quién puede consultarlos.
+- Retención.
+- Enmascaramiento.
+- Inmutabilidad.
+- Integridad.
+- Exportaciones.
+
+Los logs de auditoría no deben admitir actualización ni eliminación ordinaria.
+
+======================================================================
+22. MANTENIBILIDAD
+======================================================================
+
+Aplicar:
+
+- TypeScript estricto.
+- ESLint.
+- Prettier.
+- Convenciones de nombres.
+- DTO separados de entidades.
+- Funciones pequeñas.
+- Interfaces claras.
+- Dependencias explícitas.
+- Configuración centralizada.
+- Errores tipados.
+- API versionada.
+- Documentación OpenAPI.
+- Comentarios solo cuando aporten contexto.
+- No duplicar reglas de negocio.
+- No duplicar roles.
+- No duplicar estados.
+- No duplicar nombres de tablas.
+- No copiar consultas en varios módulos.
+
+Crea servicios compartidos para:
+
+- Autenticación.
+- Autorización.
+- Transacciones.
+- Auditoría.
+- Paginación.
+- Fechas.
+- Moneda.
+- Errores.
+- Respuestas HTTP.
+- Validación.
+
+Evita abstracciones genéricas que permitan saltarse reglas del dominio.
+
+No reemplaces archivos completos si basta con una modificación localizada.
+
+Antes de editar, verifica cambios existentes para no sobrescribir trabajo de otros integrantes.
+
+======================================================================
+23. PRUEBAS
+======================================================================
+
+Implementa:
+
+Pruebas unitarias:
+
+- Servicios.
+- Validadores.
+- Permisos.
+- Transiciones.
+- Cálculos.
+
+Pruebas de integración:
+
+- Repositorios PostgreSQL.
+- Transacciones.
+- Rollback.
+- Restricciones.
+- Triggers.
+- Autenticación.
+- Autorización.
+
+Pruebas E2E:
+
+- Inicio de sesión.
+- Navegación por rol.
+- Registro.
+- Edición.
+- Confirmación.
+- Anulación.
+- Filtros.
+- Paginación.
+- Estados vacíos.
+- Errores.
+- Responsive.
+
+Pruebas de seguridad:
+
+- Usuario no autenticado.
+- Rol sin permiso.
+- ID de otro registro.
+- SQL injection.
+- XSS.
+- Token vencido.
+- Token manipulado.
+- Acceso directo a endpoint.
+- Solicitud duplicada.
+- Operación concurrente.
+- Intento de saltar un estado.
+- Consulta de PII sin permiso.
+
+Pruebas de privacidad:
+
+- Enmascaramiento.
+- Consentimiento.
+- Marketing opt-in.
+- Exportación.
+- Logs sin PII.
+- IA sin información innecesaria.
+
+======================================================================
+24. OBSERVABILIDAD
+======================================================================
+
+Implementa logs estructurados con:
+
+- requestId.
+- usuario interno.
+- módulo.
+- endpoint.
+- método.
+- resultado.
+- duración.
+- código de error.
+
+No registrar:
+
+- Contraseñas.
+- JWT.
+- DATABASE_URL.
+- Cookies.
+- Documentos completos.
+- Información financiera sensible.
+- Prompts con PII.
+
+Implementa:
+
+GET /health
+GET /ready
+
+/health indica que el proceso está activo.
+
+/ready verifica, de forma limitada, que la aplicación puede conectarse con sus dependencias.
+
+No expongas información interna en estos endpoints.
+
+======================================================================
+25. ACCESIBILIDAD Y USABILIDAD
+======================================================================
+
+Aplica criterios pertinentes de ISO 9241:
+
+- Claridad.
+- Consistencia.
+- Prevención de errores.
+- Retroalimentación.
+- Control del usuario.
+- Reducción de carga cognitiva.
+- Recuperación ante errores.
+- Navegación comprensible.
+- Eficiencia.
+- Accesibilidad.
+
+Implementa:
+
+- Etiquetas asociadas a controles.
+- Navegación por teclado.
+- Focus visible.
+- Contraste suficiente.
+- Mensajes de error próximos al campo.
+- Confirmación para acciones sensibles.
+- Estados de carga.
+- Estados vacíos.
+- Notificaciones no intrusivas.
+- Tablas adaptadas a móvil.
+- Modales accesibles.
+- aria-label cuando sea necesario.
+
+No utilices únicamente color para comunicar estados.
+
+======================================================================
+26. ORDEN OBLIGATORIO DE IMPLEMENTACIÓN
+======================================================================
+
+Trabaja progresivamente:
+
+Etapa 1:
+Auditar el proyecto actual, dependencias, estructura, rutas, autenticación, SQLite, localStorage, data-adapter y conexión con Supabase.
+
+Etapa 2:
+Presentar mapa de archivos que se conservarán, modificarán, crearán o retirarán.
+
+Etapa 3:
+Configurar entorno, conexión PostgreSQL, manejo de secretos y health checks.
+
+Etapa 4:
+Implementar Supabase Auth, usuario_sistema, RBAC y /session/me.
+
+Etapa 5:
+Implementar middleware de autenticación, autorización, validación y errores.
+
+Etapa 6:
+Crear capa compartida de transacciones, contexto de auditoría y repositorios.
+
+Etapa 7:
+Migrar M1.
+
+Etapa 8:
+Migrar M2.
+
+Etapa 9:
+Migrar M3.
+
+Etapa 10:
+Migrar M4.
+
+Etapa 11:
+Migrar M5.
+
+Etapa 12:
+Integrar funcionalidades de IA.
+
+Etapa 13:
+Implementar bitácoras y auditoría.
+
+Etapa 14:
+Ejecutar pruebas funcionales, seguridad, privacidad, responsive y accesibilidad.
+
+No avances silenciosamente si encuentras:
+
+- Diferencias entre frontend y SQL.
+- Estados inexistentes.
+- Roles sin correspondencia.
+- Columnas faltantes.
+- Relaciones ambiguas.
+- Riesgo de pérdida de datos.
+- Necesidad de modificar una migración aplicada.
+- Operaciones que requieren una decisión arquitectónica.
+
+En esos casos, documenta:
+
+1. Evidencia encontrada.
+2. Riesgo.
+3. Alternativas.
+4. Recomendación.
+5. Archivos afectados.
+
+======================================================================
+27. CRITERIOS DE ACEPTACIÓN
+======================================================================
+
+La integración se considera terminada cuando:
+
+- El navegador no accede directamente a tablas del ERP.
+- No se usan snapshots o localStorage como base de datos.
+- Supabase Auth funciona correctamente.
+- El backend verifica JWT.
+- Los permisos se validan en servidor.
+- Cada mutación sensible utiliza transacción.
+- Los triggers reciben usuario y motivo correctos.
+- No se pierde precisión en BIGINT.
+- No hay SQL concatenado.
+- Los secretos no aparecen en el cliente.
+- Los roles provienen de una fuente central.
+- Las interfaces respetan permisos.
+- Las operaciones respetan ciclos de estado.
+- Los errores son controlados.
+- La auditoría conserva trazabilidad.
+- No se envía PII innecesaria a la IA.
+- Existen pruebas de autorización.
+- Existen pruebas de rollback.
+- Existen pruebas de concurrencia.
+- El diseño funciona en escritorio, tablet y móvil.
+- No hay botones sin comportamiento.
+- No hay funcionalidades simuladas presentadas como reales.
+- La documentación describe instalación, variables, migraciones y despliegue.
+
+======================================================================
+28. REGLAS FINALES
+======================================================================
+
+- No inventes elementos de la base de datos.
+- No elimines restricciones para hacer funcionar una interfaz.
+- No cambies estados sin revisar el ciclo documentado.
+- No expongas DATABASE_URL.
+- No uses credenciales administrativas en el navegador.
+- No guardes contraseñas fuera de Supabase Auth.
+- No confíes en permisos del frontend.
+- No permitas SQL generado por IA.
+- No registres información personal innecesaria.
+- No ejecutes migraciones destructivas automáticamente.
+- No mezcles Supabase Auth y Firebase Auth.
+- No uses Firestore como segunda fuente de verdad.
+- No implementes toda la integración en un único archivo.
+- No dupliques roles ni reglas de negocio.
+- No conviertas BIGINT a Number.
+- No realices operaciones críticas sin transacción.
+- No permitas que una recomendación de IA ejecute automáticamente una decisión sensible.
+- Mantén PostgreSQL/Supabase como fuente única de verdad.
+- Mantén control humano sobre operaciones críticas.
+- Prioriza seguridad, privacidad, trazabilidad y mantenibilidad.

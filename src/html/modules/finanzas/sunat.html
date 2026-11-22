@@ -1,0 +1,39 @@
+<div class="stack-md">
+  <div class="alert alert-warning">
+    <div>
+      <strong>Interfaz preparada para integración futura con SUNAT / OSE:</strong> Los documentos generados son comprobantes internos. El sistema <strong>no emite envío oficial ni envía CDR reales a SUNAT</strong>. Se incluye la estructura técnica UBL 2.1 lista para conectar un proveedor OSE homologado.
+    </div>
+  </div>
+
+  <div class="grid-2-lg">
+    <div class="card">
+      <div class="card-header">
+        <h2 class="card-title row-gap-sm">
+          <span data-ref="queue-icon"></span>
+          <span>Cola de Preparación de Comprobantes</span>
+        </h2>
+      </div>
+      <div class="divide-list" data-ref="queue-list"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h2 class="card-title row-gap-sm">
+          <span data-ref="xml-icon"></span>
+          <span>Vista previa estructura XML UBL 2.1 (Borrador no emitido)</span>
+        </h2>
+      </div>
+      <pre class="code-pre" data-ref="xml-pre"></pre>
+    </div>
+  </div>
+</div>
+
+<template data-tpl="item-cola-sunat">
+  <button type="button" class="p-4 w-full row-between text-left" style="width: 100%; text-align: left; cursor: pointer;">
+    <div>
+      <div class="text-xs font-bold text-navy" data-ref="title"></div>
+      <div class="text-11 text-slate-500 mt-0.5" data-ref="subtitle"></div>
+    </div>
+    <div data-ref="status"></div>
+  </button>
+</template>

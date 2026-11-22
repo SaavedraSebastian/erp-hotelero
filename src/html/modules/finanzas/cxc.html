@@ -1,0 +1,37 @@
+<div class="card">
+  <div class="table-scroll">
+    <table class="erp-table">
+      <thead>
+        <tr>
+          <th>Cliente / Ref.</th>
+          <th>Emisión / Vencimiento</th>
+          <th class="text-right">Original / Cobrado</th>
+          <th class="text-right">Pendiente</th>
+          <th>Estado y Seguimiento</th>
+        </tr>
+      </thead>
+      <tbody data-ref="tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<template data-tpl="fila-cxc">
+  <tr>
+    <td>
+      <div class="font-semibold text-navy" data-ref="client"></div>
+      <div class="text-11 font-mono text-slate-400" data-ref="doc"></div>
+    </td>
+    <td class="font-mono text-xs text-slate-600" data-ref="dates"></td>
+    <td class="text-right font-mono text-xs text-slate-600" data-ref="orig-paid"></td>
+    <td class="text-right font-mono font-bold text-navy" data-ref="pending"></td>
+    <td>
+      <div class="row-between">
+        <div>
+          <div data-ref="status"></div>
+          <div class="text-11 text-slate-500 mt-0.5" data-ref="note"></div>
+        </div>
+        <button type="button" class="btn btn-teal btn-xs hidden" data-ref="pay-btn">Cobrar</button>
+      </div>
+    </td>
+  </tr>
+</template>

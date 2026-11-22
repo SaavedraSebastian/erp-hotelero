@@ -1,0 +1,29 @@
+<div class="stack-md">
+  <div class="card card-pad stack-md">
+    <div>
+      <h2 class="card-title row-gap-sm">
+        <span data-ref="chat-icon"></span>
+        <span>Asistente Conversacional CRM</span>
+      </h2>
+      <p class="card-subtitle mt-0.5">Clasificación de reclamos, análisis de sentimiento y redacción de respuestas a huéspedes.</p>
+    </div>
+
+    <div class="crm-chat-box" data-ref="chat-box"></div>
+
+    <form class="row-wrap" data-ref="chat-form">
+      <input class="input-control flex-1 text-xs" placeholder="Ej: Clasifica el reclamo de Hab. 201 y redacta una disculpa VIP con cortesía..." data-ref="chat-input" />
+      <button type="submit" class="btn btn-teal">
+        <span data-ref="send-icon"></span>
+        <span>Enviar</span>
+      </button>
+    </form>
+  </div>
+
+  <div data-ref="advisor-slot"></div>
+</div>
+
+<template data-tpl="chat-mensaje">
+  <div class="crm-msg-row">
+    <div class="crm-msg-bubble" data-ref="bubble"></div>
+  </div>
+</template>

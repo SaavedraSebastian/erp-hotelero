@@ -1,0 +1,96 @@
+<div class="ui-templates" hidden>
+  <template data-tpl="stat-tile">
+    <div class="stat-tile">
+      <div class="stat-label" data-ref="label"></div>
+      <div class="stat-value" data-ref="value"></div>
+      <div class="stat-meta hidden" data-ref="meta"></div>
+    </div>
+  </template>
+
+  <template data-tpl="stat-tile-btn">
+    <button type="button" class="stat-tile is-clickable">
+      <div class="stat-label" data-ref="label"></div>
+      <div class="stat-value" data-ref="value"></div>
+      <div class="stat-meta hidden" data-ref="meta"></div>
+    </button>
+  </template>
+
+  <template data-tpl="status-text">
+    <span class="status-text">
+      <span data-ref="icon"></span>
+      <span data-ref="label"></span>
+    </span>
+  </template>
+
+  <template data-tpl="submodule-bar">
+    <div class="submodule-bar">
+      <div class="submodule-list" data-ref="list"></div>
+    </div>
+  </template>
+
+  <template data-tpl="submodule-tab">
+    <button type="button" class="submodule-tab">
+      <span data-ref="label"></span>
+      <span class="submodule-count hidden" data-ref="count"></span>
+    </button>
+  </template>
+
+  <template data-tpl="module-header">
+    <div class="module-header">
+      <div>
+        <div class="module-kicker hidden" data-ref="kicker"></div>
+        <h1 class="module-title" data-ref="title"></h1>
+        <p class="module-subtitle" data-ref="subtitle"></p>
+      </div>
+      <div class="module-actions hidden" data-ref="actions"></div>
+    </div>
+  </template>
+
+  <template data-tpl="search-input">
+    <div class="search-wrap">
+      <span data-ref="icon"></span>
+      <input type="text" class="input-control" data-ref="input" placeholder="Buscar..." />
+    </div>
+  </template>
+
+  <template data-tpl="empty-state">
+    <div class="empty-state">
+      <div class="text-slate-400" data-ref="icon"></div>
+      <h3 class="text-sm font-semibold text-navy" data-ref="title"></h3>
+      <p class="text-xs text-slate-500 max-w-md" data-ref="description"></p>
+      <div class="mt-2 hidden" data-ref="action"></div>
+    </div>
+  </template>
+
+  <template data-tpl="access-denied">
+    <div class="access-denied-card">
+      <div class="access-denied-icon" data-ref="icon"></div>
+      <h2 class="text-base font-bold text-navy" data-ref="title"></h2>
+      <p class="text-xs text-slate-600 leading-relaxed">
+        El perfil <strong class="text-navy" data-ref="role-label"></strong> no cuenta con permisos autorizados para acceder a
+        <strong class="text-navy" data-ref="resource-name"></strong>.
+      </p>
+      <button type="button" class="btn btn-primary mt-1 hidden" data-ref="back-btn">Volver al inicio autorizado</button>
+    </div>
+  </template>
+
+  <template data-tpl="ai-error">
+    <div class="alert alert-danger">
+      <span data-ref="icon"></span>
+      <span data-ref="message"></span>
+    </div>
+  </template>
+
+  <template data-tpl="ai-result">
+    <div class="ai-result-box">
+      <div class="row-between border-b pb-2">
+        <span class="text-xs font-semibold text-teal row-gap-sm">
+          <span data-ref="icon"></span>
+          <span>Recomendación generada (Requiere confirmación humana)</span>
+        </span>
+        <span class="text-11 text-slate-400 font-mono" data-ref="model"></span>
+      </div>
+      <div class="ai-result-text" data-ref="text"></div>
+    </div>
+  </template>
+</div>

@@ -1,0 +1,267 @@
+<div class="module-templates" hidden>
+  <template data-tpl="modal-habitacion">
+    <form class="stack-md">
+      <div class="grid-2">
+        <div>
+          <label class="field-label">Número</label>
+          <input class="input-control" required placeholder="Ej. 404" data-ref="number" />
+        </div>
+        <div>
+          <label class="field-label">Piso</label>
+          <input type="number" min="1" max="20" class="input-control" data-ref="floor" />
+        </div>
+        <div>
+          <label class="field-label">Tipo</label>
+          <select class="select-control" data-ref="type">
+            <option value="Estándar">Estándar</option>
+            <option value="Superior">Superior</option>
+            <option value="Deluxe Vista Mar">Deluxe Vista Mar</option>
+            <option value="Suite Junior">Suite Junior</option>
+            <option value="Suite Presidencial">Suite Presidencial</option>
+          </select>
+        </div>
+        <div>
+          <label class="field-label">Capacidad</label>
+          <input type="number" min="1" max="6" class="input-control" data-ref="capacity" />
+        </div>
+        <div>
+          <label class="field-label">Tarifa base (S/)</label>
+          <input type="number" min="50" step="10" class="input-control" data-ref="baseRate" />
+        </div>
+        <div>
+          <label class="field-label">Estado Housekeeping</label>
+          <select class="select-control" data-ref="hkStatus">
+            <option value="Inspeccionada">Inspeccionada</option>
+            <option value="Limpia">Limpia</option>
+            <option value="En limpieza">En limpieza</option>
+            <option value="Sucia">Sucia</option>
+            <option value="Fuera de servicio">Fuera de servicio</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label class="field-label">Características (separadas por coma)</label>
+        <input class="input-control" data-ref="features" />
+      </div>
+      <div class="row-wrap justify-end pt-2">
+        <button type="button" class="btn btn-outline-muted" data-ref="cancel-btn">Cancelar</button>
+        <button type="submit" class="btn btn-primary" data-ref="submit-btn"></button>
+      </div>
+    </form>
+  </template>
+
+  <template data-tpl="modal-reserva">
+    <form class="stack-md">
+      <div class="grid-2">
+        <div>
+          <label class="field-label">Huésped Titular</label>
+          <select class="select-control" data-ref="guestId"></select>
+        </div>
+        <div>
+          <label class="field-label">Habitación</label>
+          <select class="select-control" data-ref="roomId"></select>
+        </div>
+        <div>
+          <label class="field-label">Fecha Check-in</label>
+          <input type="date" class="input-control" data-ref="checkInDate" />
+        </div>
+        <div>
+          <label class="field-label">Fecha Check-out</label>
+          <input type="date" class="input-control" data-ref="checkOutDate" />
+        </div>
+        <div>
+          <label class="field-label">Canal</label>
+          <select class="select-control" data-ref="channel">
+            <option value="Directo Web">Directo Web</option>
+            <option value="Booking.com">Booking.com</option>
+            <option value="Expedia">Expedia</option>
+            <option value="Corporativo">Corporativo</option>
+            <option value="Agencia">Agencia</option>
+            <option value="Walk-in">Walk-in</option>
+          </select>
+        </div>
+        <div>
+          <label class="field-label">Tarifa por noche (S/)</label>
+          <input type="number" min="50" class="input-control font-mono" data-ref="nightlyRate" />
+        </div>
+        <div>
+          <label class="field-label">Adultos</label>
+          <input type="number" min="1" max="6" class="input-control" data-ref="adults" />
+        </div>
+        <div>
+          <label class="field-label">Niños</label>
+          <input type="number" min="0" max="4" class="input-control" data-ref="children" />
+        </div>
+      </div>
+      <div>
+        <label class="field-label">Solicitudes especiales</label>
+        <textarea rows="2" class="textarea-control" placeholder="Piso alto, cama extra, traslado aeropuerto..." data-ref="specialRequests"></textarea>
+      </div>
+      <div class="row-wrap justify-end pt-2">
+        <button type="button" class="btn btn-outline-muted" data-ref="cancel-btn">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Confirmar reserva</button>
+      </div>
+    </form>
+  </template>
+
+  <template data-tpl="modal-tarifa">
+    <form class="stack-md">
+      <div class="grid-2">
+        <div>
+          <label class="field-label">Nombre</label>
+          <input class="input-control" required data-ref="name" />
+        </div>
+        <div>
+          <label class="field-label">Tipo de habitación</label>
+          <select class="select-control" data-ref="roomType">
+            <option value="Estándar">Estándar</option>
+            <option value="Superior">Superior</option>
+            <option value="Deluxe Vista Mar">Deluxe Vista Mar</option>
+            <option value="Suite Junior">Suite Junior</option>
+            <option value="Suite Presidencial">Suite Presidencial</option>
+          </select>
+        </div>
+        <div>
+          <label class="field-label">Temporada</label>
+          <select class="select-control" data-ref="season">
+            <option value="Alta">Alta</option>
+            <option value="Media">Media</option>
+            <option value="Baja">Baja</option>
+            <option value="Especial">Especial</option>
+          </select>
+        </div>
+        <div>
+          <label class="field-label">Precio por noche (S/)</label>
+          <input type="number" min="50" class="input-control font-mono" required data-ref="price" />
+        </div>
+        <div>
+          <label class="field-label">Vigencia inicio</label>
+          <input type="date" class="input-control" data-ref="startDate" />
+        </div>
+        <div>
+          <label class="field-label">Vigencia fin</label>
+          <input type="date" class="input-control" data-ref="endDate" />
+        </div>
+      </div>
+      <div>
+        <label class="field-label">Motivo de ajuste</label>
+        <input class="input-control" placeholder="Ej. Ajuste por evento corporativo / fin de semana" data-ref="reason" />
+      </div>
+      <div class="row-wrap justify-end pt-2">
+        <button type="button" class="btn btn-outline-muted" data-ref="cancel-btn">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Guardar tarifa</button>
+      </div>
+    </form>
+  </template>
+
+  <template data-tpl="modal-huesped">
+    <form class="stack-md">
+      <div class="grid-2">
+        <div>
+          <label class="field-label">Nombre completo</label>
+          <input class="input-control" required data-ref="fullName" />
+        </div>
+        <div>
+          <label class="field-label">Tipo doc.</label>
+          <select class="select-control" data-ref="documentType">
+            <option value="DNI">DNI</option>
+            <option value="Pasaporte">Pasaporte</option>
+            <option value="CE">CE</option>
+          </select>
+        </div>
+        <div>
+          <label class="field-label">Número documento</label>
+          <input class="input-control font-mono" required data-ref="documentNumber" />
+        </div>
+        <div>
+          <label class="field-label">Nacionalidad</label>
+          <input class="input-control" data-ref="nationality" />
+        </div>
+        <div>
+          <label class="field-label">Correo electrónico</label>
+          <input type="email" class="input-control" required data-ref="email" />
+        </div>
+        <div>
+          <label class="field-label">Teléfono</label>
+          <input class="input-control" data-ref="phone" />
+        </div>
+        <div>
+          <label class="field-label">Segmento</label>
+          <select class="select-control" data-ref="segment">
+            <option value="Corporativo">Corporativo</option>
+            <option value="VIP">VIP</option>
+            <option value="Vacacional">Vacacional</option>
+            <option value="Frecuente">Frecuente</option>
+            <option value="Nuevo">Nuevo</option>
+          </select>
+        </div>
+        <div>
+          <label class="field-label">Empresa (opcional)</label>
+          <input class="input-control" data-ref="company" />
+        </div>
+      </div>
+      <div>
+        <label class="field-label">Preferencias (separadas por coma)</label>
+        <input class="input-control" data-ref="preferences" />
+      </div>
+      <div class="row-wrap gap-4">
+        <label class="checkbox-row">
+          <input type="checkbox" data-ref="privacyConsentISO27701" />
+          <span>Consentimiento de privacidad de datos</span>
+        </label>
+        <label class="checkbox-row">
+          <input type="checkbox" data-ref="marketingOptIn" />
+          <span>Opt-in comunicaciones comerciales</span>
+        </label>
+      </div>
+      <div class="row-wrap justify-end pt-2">
+        <button type="button" class="btn btn-outline-muted" data-ref="cancel-btn">Cancelar</button>
+        <button type="submit" class="btn btn-primary" data-ref="submit-btn"></button>
+      </div>
+    </form>
+  </template>
+
+  <template data-tpl="modal-espera">
+    <form class="stack-md">
+      <div class="grid-2">
+        <div>
+          <label class="field-label">Huésped / Solicitante</label>
+          <input class="input-control" required data-ref="guestName" />
+        </div>
+        <div>
+          <label class="field-label">Contacto</label>
+          <input class="input-control" required placeholder="Teléfono / Email" data-ref="contact" />
+        </div>
+        <div>
+          <label class="field-label">Tipo de habitación</label>
+          <select class="select-control" data-ref="roomType">
+            <option value="Estándar">Estándar</option>
+            <option value="Superior">Superior</option>
+            <option value="Deluxe Vista Mar">Deluxe Vista Mar</option>
+            <option value="Suite Junior">Suite Junior</option>
+            <option value="Suite Presidencial">Suite Presidencial</option>
+          </select>
+        </div>
+        <div>
+          <label class="field-label">Tipo conflicto</label>
+          <select class="select-control" data-ref="conflictType">
+            <option value="Lista de espera">Lista de espera</option>
+            <option value="Sobreventa">Sobreventa</option>
+          </select>
+        </div>
+        <div>
+          <label class="field-label">Ingreso</label>
+          <input type="date" class="input-control" data-ref="checkInDate" />
+        </div>
+        <div>
+          <label class="field-label">Salida</label>
+          <input type="date" class="input-control" data-ref="checkOutDate" />
+        </div>
+      </div>
+      <div class="row-wrap justify-end pt-2">
+        <button type="button" class="btn btn-outline-muted" data-ref="cancel-btn">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Registrar en espera</button>
+      </div>
+    </form>
+  </template>
+</div>

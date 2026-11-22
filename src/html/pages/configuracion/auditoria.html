@@ -1,0 +1,37 @@
+<div class="card">
+  <div class="card-header">
+    <div>
+      <h2 class="card-title">Bitácora de Auditoría SGH-ERP</h2>
+      <p class="card-subtitle">Registro cronológico de accesos, operaciones críticas e impactos en privacidad.</p>
+    </div>
+  </div>
+  <div class="table-scroll">
+    <table class="erp-table">
+      <thead>
+        <tr>
+          <th>Fecha / Hora</th>
+          <th>Usuario</th>
+          <th>Rol</th>
+          <th>Módulo</th>
+          <th>Acción</th>
+          <th>Referencia</th>
+        </tr>
+      </thead>
+      <tbody data-ref="tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<template data-tpl="fila-auditoria">
+  <tr>
+    <td class="font-mono text-11 text-slate-500" data-ref="timestamp"></td>
+    <td class="font-medium text-navy" data-ref="user"></td>
+    <td class="text-xs text-slate-600" data-ref="role"></td>
+    <td class="font-mono text-teal" data-ref="module"></td>
+    <td class="text-slate-700">
+      <span data-ref="action"></span>
+      <span class="ml-1.5 text-2xs font-mono font-semibold text-warning hidden" data-ref="pii-flag">[PII/SEG]</span>
+    </td>
+    <td class="font-mono text-slate-500" data-ref="ref"></td>
+  </tr>
+</template>

@@ -1,0 +1,249 @@
+<div class="module-templates" hidden>
+  <template data-tpl="modal-producto">
+    <form class="stack-md">
+      <div class="grid-2">
+        <div>
+          <label class="field-label">SKU / Código</label>
+          <input class="input-control font-mono" required data-ref="sku" />
+        </div>
+        <div>
+          <label class="field-label">Nombre</label>
+          <input class="input-control" required data-ref="name" />
+        </div>
+        <div>
+          <label class="field-label">Categoría</label>
+          <select class="select-control" data-ref="category">
+            <option value="Restaurante">Restaurante</option>
+            <option value="Bar">Bar</option>
+            <option value="Minibar">Minibar</option>
+            <option value="Cafetería">Cafetería</option>
+          </select>
+        </div>
+        <div>
+          <label class="field-label">Precio venta (S/)</label>
+          <input type="number" step="0.5" min="1" class="input-control font-mono" data-ref="price" />
+        </div>
+        <div>
+          <label class="field-label">Costo (S/)</label>
+          <input type="number" step="0.5" min="0" class="input-control font-mono" data-ref="cost" />
+        </div>
+        <div>
+          <label class="field-label">Control de stock</label>
+          <select class="select-control" data-ref="stockControl">
+            <option value="Receta">Receta</option>
+            <option value="Directo">Directo</option>
+          </select>
+        </div>
+      </div>
+      <div class="row-wrap justify-end pt-2">
+        <button type="button" class="btn btn-outline-muted" data-ref="cancel-btn">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Guardar producto</button>
+      </div>
+    </form>
+  </template>
+
+  <template data-tpl="modal-servicio">
+    <form class="stack-md">
+      <div class="grid-2">
+        <div>
+          <label class="field-label">Nombre del servicio</label>
+          <input class="input-control" required data-ref="name" />
+        </div>
+        <div>
+          <label class="field-label">Área</label>
+          <select class="select-control" data-ref="area">
+            <option value="Spa">Spa</option>
+            <option value="Lavandería">Lavandería</option>
+            <option value="Cochera">Cochera</option>
+            <option value="Traslados">Traslados</option>
+            <option value="Tours">Tours</option>
+          </select>
+        </div>
+        <div>
+          <label class="field-label">Duración (min, opcional)</label>
+          <input type="number" min="0" class="input-control font-mono" placeholder="Ej. 60" data-ref="duration" />
+        </div>
+        <div>
+          <label class="field-label">Tarifa (S/)</label>
+          <input type="number" min="1" class="input-control font-mono" data-ref="price" />
+        </div>
+      </div>
+      <div class="row-wrap justify-end pt-2">
+        <button type="button" class="btn btn-outline-muted" data-ref="cancel-btn">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Guardar servicio</button>
+      </div>
+    </form>
+  </template>
+
+  <template data-tpl="modal-kardex">
+    <form class="stack-md">
+      <div class="grid-2">
+        <div>
+          <label class="field-label">Tipo movimiento</label>
+          <select class="select-control" data-ref="type">
+            <option value="Entrada">Entrada</option>
+            <option value="Salida">Salida</option>
+            <option value="Ajuste">Ajuste</option>
+          </select>
+        </div>
+        <div>
+          <label class="field-label" data-ref="qty-label">Cantidad</label>
+          <input type="number" step="0.5" min="0.5" class="input-control font-mono" data-ref="qty" />
+        </div>
+      </div>
+      <div>
+        <label class="field-label">Referencia</label>
+        <input class="input-control" data-ref="ref" />
+      </div>
+      <div class="row-wrap justify-end pt-2">
+        <button type="button" class="btn btn-outline-muted" data-ref="cancel-btn">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Registrar movimiento</button>
+      </div>
+    </form>
+  </template>
+
+  <template data-tpl="modal-insumo">
+    <form class="stack-md">
+      <div class="grid-2">
+        <div>
+          <label class="field-label">SKU</label>
+          <input class="input-control font-mono" required data-ref="sku" />
+        </div>
+        <div>
+          <label class="field-label">Nombre insumo</label>
+          <input class="input-control" required data-ref="name" />
+        </div>
+        <div>
+          <label class="field-label">Categoría</label>
+          <select class="select-control" data-ref="category">
+            <option value="Alimentos y Bebidas">Alimentos y Bebidas</option>
+            <option value="Limpieza y Amenities">Limpieza y Amenities</option>
+            <option value="Mantenimiento">Mantenimiento</option>
+            <option value="Minibar">Minibar</option>
+          </select>
+        </div>
+        <div>
+          <label class="field-label">Unidad</label>
+          <input class="input-control" data-ref="unit" />
+        </div>
+        <div>
+          <label class="field-label">Stock inicial</label>
+          <input type="number" min="0" class="input-control font-mono" data-ref="stock" />
+        </div>
+        <div>
+          <label class="field-label">Stock mínimo</label>
+          <input type="number" min="1" class="input-control font-mono" data-ref="min-stock" />
+        </div>
+        <div>
+          <label class="field-label">Costo unitario (S/)</label>
+          <input type="number" step="0.5" min="0" class="input-control font-mono" data-ref="unit-cost" />
+        </div>
+        <div>
+          <label class="field-label">Ubicación</label>
+          <input class="input-control" data-ref="location" />
+        </div>
+      </div>
+      <div class="row-wrap justify-end pt-2">
+        <button type="button" class="btn btn-outline-muted" data-ref="cancel-btn">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Crear insumo</button>
+      </div>
+    </form>
+  </template>
+
+  <template data-tpl="modal-proveedor">
+    <form class="stack-md">
+      <div class="grid-2">
+        <div>
+          <label class="field-label">Razón social</label>
+          <input class="input-control" required data-ref="name" />
+        </div>
+        <div>
+          <label class="field-label">RUC</label>
+          <input class="input-control font-mono" required data-ref="ruc" />
+        </div>
+        <div>
+          <label class="field-label">Rubro</label>
+          <input class="input-control" data-ref="category" />
+        </div>
+        <div>
+          <label class="field-label">Contacto</label>
+          <input class="input-control" data-ref="contact" />
+        </div>
+        <div>
+          <label class="field-label">Teléfono</label>
+          <input class="input-control" data-ref="phone" />
+        </div>
+        <div>
+          <label class="field-label">Lead time (días)</label>
+          <input type="number" min="1" class="input-control font-mono" data-ref="lead-time" />
+        </div>
+      </div>
+      <div class="row-wrap justify-end pt-2">
+        <button type="button" class="btn btn-outline-muted" data-ref="cancel-btn">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Guardar proveedor</button>
+      </div>
+    </form>
+  </template>
+
+  <template data-tpl="modal-orden-compra">
+    <form class="stack-md">
+      <div class="grid-2">
+        <div>
+          <label class="field-label">Proveedor</label>
+          <select class="select-control" data-ref="supplier"></select>
+        </div>
+        <div>
+          <label class="field-label">Insumo de Almacén</label>
+          <select class="select-control" data-ref="item"></select>
+        </div>
+        <div>
+          <label class="field-label">Cantidad a comprar</label>
+          <input type="number" min="1" class="input-control font-mono" data-ref="qty" />
+        </div>
+        <div>
+          <label class="field-label">Costo unitario (S/)</label>
+          <input type="number" step="0.5" min="1" class="input-control font-mono" data-ref="unit-cost" />
+        </div>
+      </div>
+      <div class="row-wrap justify-end pt-2">
+        <button type="button" class="btn btn-outline-muted" data-ref="cancel-btn">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Emitir Orden de Compra</button>
+      </div>
+    </form>
+  </template>
+
+  <template data-tpl="modal-receta">
+    <form class="stack-md">
+      <div class="grid-2">
+        <div>
+          <label class="field-label">Producto de carta</label>
+          <select class="select-control" data-ref="product"></select>
+        </div>
+        <div>
+          <label class="field-label">Precio venta (S/)</label>
+          <input type="number" min="1" class="input-control font-mono" data-ref="sale-price" />
+        </div>
+        <div>
+          <label class="field-label">Ingrediente principal</label>
+          <select class="select-control" data-ref="ing1"></select>
+        </div>
+        <div>
+          <label class="field-label">Cantidad</label>
+          <input type="number" step="0.05" min="0.05" class="input-control font-mono" data-ref="ing1-qty" />
+        </div>
+        <div>
+          <label class="field-label">Segundo ingrediente</label>
+          <select class="select-control" data-ref="ing2"></select>
+        </div>
+        <div>
+          <label class="field-label">Cantidad</label>
+          <input type="number" step="0.05" min="0" class="input-control font-mono" data-ref="ing2-qty" />
+        </div>
+      </div>
+      <div class="row-wrap justify-end pt-2">
+        <button type="button" class="btn btn-outline-muted" data-ref="cancel-btn">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Guardar receta</button>
+      </div>
+    </form>
+  </template>
+</div>

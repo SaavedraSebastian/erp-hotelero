@@ -1,0 +1,50 @@
+<div class="stack-md">
+  <div class="row-between">
+    <div class="row-wrap flex-1">
+      <div data-ref="search-slot"></div>
+      <select class="select-control w-auto text-xs" data-ref="cat-filter">
+        <option value="Todas">Todas las categorías</option>
+        <option value="Restaurante">Restaurante</option>
+        <option value="Bar">Bar</option>
+        <option value="Minibar">Minibar</option>
+        <option value="Cafetería">Cafetería</option>
+      </select>
+    </div>
+    <button type="button" class="btn btn-primary btn-sm hidden" data-ref="new-btn">
+      <span data-ref="new-icon"></span>
+      <span>Nuevo producto</span>
+    </button>
+  </div>
+
+  <div class="card">
+    <div class="table-scroll">
+      <table class="erp-table">
+        <thead>
+          <tr>
+            <th>SKU / Producto</th>
+            <th>Categoría</th>
+            <th>Control Stock</th>
+            <th class="text-right">Costo</th>
+            <th class="text-right">Precio Venta</th>
+            <th class="text-right">Margen</th>
+          </tr>
+        </thead>
+        <tbody data-ref="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<template data-tpl="fila-producto">
+  <tr>
+    <td>
+      <div class="font-mono text-11 font-semibold text-navy" data-ref="code"></div>
+      <div class="font-medium text-slate-700" data-ref="name"></div>
+    </td>
+    <td data-ref="category"></td>
+    <td class="text-slate-600" data-ref="stock"></td>
+    <td class="text-right font-mono text-slate-500" data-ref="cost"></td>
+    <td class="text-right font-mono font-semibold text-navy" data-ref="price"></td>
+    <td class="text-right font-mono font-semibold text-teal" data-ref="margin"></td>
+  </tr>
+</template>

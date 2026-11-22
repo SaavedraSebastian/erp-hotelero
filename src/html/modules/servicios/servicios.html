@@ -1,0 +1,25 @@
+<div class="stack-md">
+  <div class="row-between">
+    <p class="text-xs text-slate-500">Servicios complementarios de Spa, Lavandería, Cochera, Traslados y Bar.</p>
+    <button type="button" class="btn btn-primary btn-sm hidden" data-ref="new-btn">
+      <span data-ref="new-icon"></span>
+      <span>Nuevo servicio</span>
+    </button>
+  </div>
+
+  <div class="grid-3" data-ref="grid"></div>
+</div>
+
+<template data-tpl="card-servicio">
+  <div class="card card-pad stack-sm">
+    <div class="row-between items-start">
+      <span class="font-mono text-11 font-semibold text-teal" data-ref="code-area"></span>
+      <span class="font-mono text-sm font-bold text-navy" data-ref="price"></span>
+    </div>
+    <div>
+      <h3 class="text-sm font-bold text-navy" data-ref="name"></h3>
+      <p class="text-xs text-slate-500 mt-1" data-ref="desc"></p>
+    </div>
+    <div class="font-mono text-11 text-slate-400 pt-1" data-ref="meta"></div>
+  </div>
+</template>

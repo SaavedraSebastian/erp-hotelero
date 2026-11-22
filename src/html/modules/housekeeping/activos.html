@@ -1,0 +1,43 @@
+<div class="stack-md">
+  <div class="row-between">
+    <div class="flex-1 max-w-md" data-ref="search-slot"></div>
+    <button type="button" class="btn btn-primary btn-sm hidden" data-ref="new-btn">
+      <span data-ref="plus-icon"></span>
+      <span>Registrar activo</span>
+    </button>
+  </div>
+
+  <div class="card">
+    <div class="table-scroll">
+      <table class="erp-table">
+        <thead>
+          <tr>
+            <th>Código / Equipo</th>
+            <th>Ubicación</th>
+            <th>Marca / Compra</th>
+            <th class="text-right">Horas Uso</th>
+            <th>Condición</th>
+            <th class="text-right">Riesgo Falla IA</th>
+            <th class="text-right hidden" data-ref="actions-th">Acción</th>
+          </tr>
+        </thead>
+        <tbody data-ref="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<template data-tpl="fila-activo">
+  <tr>
+    <td>
+      <div class="font-mono font-bold text-navy" data-ref="code"></div>
+      <div class="text-xs text-slate-600" data-ref="name"></div>
+    </td>
+    <td class="text-xs text-slate-700" data-ref="location"></td>
+    <td class="text-xs text-slate-600" data-ref="brand-date"></td>
+    <td class="text-right font-mono text-xs text-navy" data-ref="hours"></td>
+    <td data-ref="condition"></td>
+    <td class="text-right font-mono font-bold" data-ref="risk"></td>
+    <td class="text-right hidden" data-ref="action"></td>
+  </tr>
+</template>

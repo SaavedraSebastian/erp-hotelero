@@ -1,0 +1,180 @@
+<div class="stack-xl">
+  <div data-ref="header-slot"></div>
+  <section class="grid-kpis" data-ref="kpis-slot"></section>
+  <div class="stack-md" data-ref="specialized-slot"></div>
+  <section class="shortcuts-grid" data-ref="shortcuts-slot"></section>
+  <div data-ref="charts-slot"></div>
+  <div data-ref="insights-slot"></div>
+  <div data-ref="advisor-slot"></div>
+</div>
+
+<template data-tpl="header-actions">
+  <div class="row-wrap">
+    <div class="segmented" data-ref="range-group">
+      <button type="button" class="segmented-btn" data-range="hoy">Hoy</button>
+      <button type="button" class="segmented-btn" data-range="7d">7 días</button>
+      <button type="button" class="segmented-btn" data-range="30d">30 días</button>
+    </div>
+  </div>
+</template>
+
+<template data-tpl="card-limpieza">
+  <div class="card card-pad stack-md">
+    <div class="row-between">
+      <div>
+        <h2 class="card-title">Mis habitaciones asignadas hoy</h2>
+        <p class="card-subtitle">Vista acotada exclusivamente a tus órdenes de limpieza asignadas.</p>
+      </div>
+      <button type="button" class="btn btn-primary btn-sm" data-ref="go-btn">Ir a mis órdenes</button>
+    </div>
+    <div class="grid-3" data-ref="list"></div>
+  </div>
+</template>
+
+<template data-tpl="limpieza-item">
+  <div class="p-3 border rounded-md row-between">
+    <div>
+      <div class="font-mono text-sm font-bold text-navy" data-ref="room"></div>
+      <div class="text-xs text-slate-500" data-ref="meta"></div>
+    </div>
+    <div data-ref="status"></div>
+  </div>
+</template>
+
+<template data-tpl="card-tecnico">
+  <div class="card card-pad stack-md">
+    <div class="row-between">
+      <div>
+        <h2 class="card-title">Mis órdenes de trabajo asignadas</h2>
+        <p class="card-subtitle">Tickets técnicos y mantenimiento correctivo asignado a tu perfil.</p>
+      </div>
+      <button type="button" class="btn btn-primary btn-sm" data-ref="go-btn">Atender órdenes</button>
+    </div>
+    <div class="grid-2" data-ref="list"></div>
+  </div>
+</template>
+
+<template data-tpl="tecnico-item">
+  <div class="p-3 border rounded-md stack-xs">
+    <div class="row-between">
+      <span class="font-mono text-xs font-bold text-navy" data-ref="code"></span>
+      <span data-ref="priority"></span>
+    </div>
+    <p class="text-xs text-slate-600" data-ref="description"></p>
+  </div>
+</template>
+
+<template data-tpl="card-cajero">
+  <div class="card card-pad row-between">
+    <div>
+      <h2 class="card-title" data-ref="title"></h2>
+      <p class="card-subtitle" data-ref="subtitle"></p>
+    </div>
+    <div class="row-wrap">
+      <button type="button" class="btn btn-teal btn-sm" data-ref="pay-btn">Registrar Cobro</button>
+      <button type="button" class="btn btn-primary btn-sm" data-ref="cash-btn">Gestionar Caja</button>
+    </div>
+  </div>
+</template>
+
+<template data-tpl="card-auditor">
+  <div class="card card-pad row-between">
+    <div>
+      <h2 class="card-title">Panel de Auditoría (Solo Lectura)</h2>
+      <p class="card-subtitle" data-ref="subtitle"></p>
+    </div>
+    <button type="button" class="btn btn-primary btn-sm" data-ref="go-btn">Ver bitácora completa</button>
+  </div>
+</template>
+
+<template data-tpl="shortcut-card">
+  <button type="button" class="shortcut-card">
+    <div class="row-between w-full">
+      <span class="text-11 font-mono text-slate-400" data-ref="kicker"></span>
+      <span data-ref="icon"></span>
+    </div>
+    <div>
+      <div class="text-xs font-bold text-navy" data-ref="title"></div>
+      <div class="text-11 font-mono text-slate-500 mt-0.5" data-ref="desc"></div>
+    </div>
+  </button>
+</template>
+
+<template data-tpl="charts-section">
+  <div class="charts-grid-3">
+    <div class="card card-pad stack-md hidden" data-ref="finance-card">
+      <div>
+        <h2 class="card-title">Ingresos vs Costos por Unidad Operativa</h2>
+        <p class="card-subtitle">Actualización automática desde Reservas, POS y Finanzas (S/)</p>
+      </div>
+      <div data-ref="finance-chart"></div>
+    </div>
+
+    <div class="card card-pad stack-md hidden" data-ref="rooms-card">
+      <div>
+        <h2 class="card-title">Estado Físico y Comercial</h2>
+        <p class="card-subtitle" data-ref="rooms-subtitle"></p>
+      </div>
+      <div data-ref="rooms-chart"></div>
+      <div class="stack-xs pt-2 border-t-soft" data-ref="rooms-legend"></div>
+    </div>
+  </div>
+</template>
+
+<template data-tpl="legend-item">
+  <div class="row-between text-xs">
+    <span class="row-gap-sm text-slate-600">
+      <span class="rounded-full shrink-0" style="width:8px;height:8px;display:inline-block" data-ref="swatch"></span>
+      <span data-ref="label"></span>
+    </span>
+    <span class="font-mono font-semibold text-navy" data-ref="value"></span>
+  </div>
+</template>
+
+<template data-tpl="insights-section">
+  <div class="grid-2-lg">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <h2 class="card-title">Recomendaciones Prioritarias de IA</h2>
+          <p class="card-subtitle">Sugerencias filtradas según el alcance de tu perfil</p>
+        </div>
+      </div>
+      <div class="divide-list" data-ref="alerts-list"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <h2 class="card-title">Actividad Integrada Reciente</h2>
+          <p class="card-subtitle">Eventos intermodulares vinculados a tus áreas autorizadas</p>
+        </div>
+      </div>
+      <div class="divide-list" data-ref="activity-list"></div>
+    </div>
+  </div>
+</template>
+
+<template data-tpl="ai-alert-row">
+  <div class="p-4 row-between">
+    <div class="stack-xs flex-1 min-w-0">
+      <div class="text-11 font-semibold text-teal" data-ref="mod"></div>
+      <div class="text-xs font-bold text-navy" data-ref="headline"></div>
+      <p class="text-xs text-slate-500" data-ref="detail"></p>
+    </div>
+    <button type="button" class="btn btn-outline btn-xs shrink-0" data-ref="action-btn">Revisar →</button>
+  </div>
+</template>
+
+<template data-tpl="activity-row">
+  <div class="p-4 row-between items-start">
+    <div class="min-w-0 flex-1 row-gap-sm items-start">
+      <span class="mt-0.5 shrink-0" data-ref="status-icon"></span>
+      <div class="min-w-0 flex-1">
+        <div class="text-xs font-semibold" data-ref="title"></div>
+        <p class="text-xs text-slate-500 mt-0.5" data-ref="message"></p>
+      </div>
+    </div>
+    <span class="text-11 font-mono text-slate-400 shrink-0" data-ref="time"></span>
+  </div>
+</template>

@@ -1,0 +1,33 @@
+<div class="stack-md">
+  <div class="row-between">
+    <p class="text-xs text-slate-500">Tarifas por temporada con sincronización inmediata al tarifario base de habitaciones.</p>
+    <button type="button" class="btn btn-primary btn-sm hidden" data-ref="new-rate-btn">
+      <span data-ref="plus-icon"></span>
+      <span>Nueva tarifa</span>
+    </button>
+  </div>
+  <div class="grid-2" data-ref="grid"></div>
+</div>
+
+<template data-tpl="card-tarifa">
+  <div class="card card-pad stack-md">
+    <div class="row-between items-start">
+      <div>
+        <div class="text-11 font-semibold text-teal" data-ref="kicker"></div>
+        <h3 class="text-sm font-bold text-navy mt-0.5" data-ref="name"></h3>
+        <div class="text-11 font-mono text-slate-500 mt-0.5" data-ref="dates"></div>
+      </div>
+      <div class="text-right">
+        <div class="font-mono text-lg font-bold text-navy" data-ref="price"></div>
+        <div class="text-11 text-slate-400">por noche</div>
+      </div>
+    </div>
+    <div class="pt-2 border-t-soft stack-xs hidden" data-ref="history-box">
+      <div class="text-11 font-semibold text-slate-600">Últimas modificaciones:</div>
+      <div class="stack-xs" data-ref="history-list"></div>
+    </div>
+    <div class="row-between justify-end hidden" data-ref="actions-row">
+      <button type="button" class="btn btn-outline btn-xs" data-ref="edit-btn">Editar precio</button>
+    </div>
+  </div>
+</template>

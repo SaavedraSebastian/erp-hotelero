@@ -1,0 +1,21 @@
+<div class="stack-md">
+  <div class="card card-pad stack-sm">
+    <h2 class="card-title row-gap-sm">
+      <span data-ref="alert-icon"></span>
+      <span>Alertas de Anomalías y Riesgo Financiero</span>
+    </h2>
+    <div class="divide-list" data-ref="alerts-list"></div>
+  </div>
+
+  <div data-ref="advisor-slot"></div>
+</div>
+
+<template data-tpl="item-alerta-financiera">
+  <div class="py-2.5 stack-xs">
+    <div class="row-gap-sm text-xs font-semibold" data-ref="headline-wrap">
+      <span data-ref="icon"></span>
+      <span data-ref="headline"></span>
+    </div>
+    <p class="text-11 text-slate-600 ml-5" data-ref="detail"></p>
+  </div>
+</template>

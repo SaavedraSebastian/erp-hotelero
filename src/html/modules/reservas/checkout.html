@@ -1,0 +1,38 @@
+<div class="stack-md">
+  <div data-ref="content"></div>
+</div>
+
+<template data-tpl="card-checkout">
+  <div class="card card-pad stack-md">
+    <div class="row-between items-start">
+      <div>
+        <div class="font-mono text-xs text-slate-500" data-ref="room-code"></div>
+        <div class="text-base font-bold text-navy mt-0.5" data-ref="guest"></div>
+        <div class="text-xs text-slate-500" data-ref="date"></div>
+      </div>
+      <div data-ref="balance-status"></div>
+    </div>
+    <div class="grid-3 pt-2 border-t-soft hidden" data-ref="folio-box">
+      <div>
+        <div class="text-11 text-slate-500" data-ref="charges-label">Cargos</div>
+        <div class="font-mono text-xs font-bold text-navy" data-ref="folio-charges"></div>
+      </div>
+      <div>
+        <div class="text-11 text-slate-500">Pagos</div>
+        <div class="font-mono text-xs font-bold text-teal" data-ref="folio-payments"></div>
+      </div>
+      <div>
+        <div class="text-11 text-slate-500">Saldo</div>
+        <div class="font-mono text-xs font-bold text-warning" data-ref="folio-balance"></div>
+      </div>
+    </div>
+    <div class="row-wrap justify-end gap-2" data-ref="actions-row">
+      <button type="button" class="btn btn-outline btn-xs" data-ref="folio-btn">Ir a cobrar en Folio</button>
+      <button type="button" class="btn btn-outline-muted btn-xs hidden" data-ref="cxc-btn">Enviar a CxC</button>
+      <button type="button" class="btn btn-primary btn-xs hidden" data-ref="checkout-btn">
+        <span data-ref="checkout-icon"></span>
+        <span>Confirmar Check-out</span>
+      </button>
+    </div>
+  </div>
+</template>

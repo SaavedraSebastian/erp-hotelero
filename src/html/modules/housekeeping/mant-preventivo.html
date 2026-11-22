@@ -1,0 +1,41 @@
+<div class="stack-md">
+  <div class="row-between">
+    <p class="text-xs text-slate-500">Calendario de revisiones periódicas para equipos críticos del hotel.</p>
+    <button type="button" class="btn btn-primary btn-sm hidden" data-ref="new-btn">
+      <span data-ref="plus-icon"></span>
+      <span>Programar preventivo</span>
+    </button>
+  </div>
+
+  <div class="card">
+    <div class="table-scroll">
+      <table class="erp-table">
+        <thead>
+          <tr>
+            <th>Activo / Ubicación</th>
+            <th>Frecuencia</th>
+            <th>Próxima Fecha</th>
+            <th>Responsable</th>
+            <th>Estado</th>
+            <th class="text-right hidden" data-ref="actions-th">Acción</th>
+          </tr>
+        </thead>
+        <tbody data-ref="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<template data-tpl="fila-preventivo">
+  <tr>
+    <td>
+      <div class="font-semibold text-navy" data-ref="asset"></div>
+      <div class="text-11 text-slate-500" data-ref="location-notes"></div>
+    </td>
+    <td data-ref="frequency"></td>
+    <td class="font-mono text-xs text-navy" data-ref="date"></td>
+    <td class="text-xs text-slate-700" data-ref="staff"></td>
+    <td data-ref="status"></td>
+    <td class="text-right hidden" data-ref="action"></td>
+  </tr>
+</template>

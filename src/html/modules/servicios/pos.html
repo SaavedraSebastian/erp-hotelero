@@ -1,0 +1,88 @@
+<div class="pos-layout">
+  <div class="card card-pad stack-md">
+    <div class="row-wrap" data-ref="categories">
+      <button type="button" class="filter-pill" data-cat="Todos">Todos</button>
+      <button type="button" class="filter-pill" data-cat="Restaurante">Restaurante</button>
+      <button type="button" class="filter-pill" data-cat="Bar">Bar</button>
+      <button type="button" class="filter-pill" data-cat="Minibar">Minibar</button>
+      <button type="button" class="filter-pill" data-cat="Cafetería">Cafetería</button>
+    </div>
+    <div class="grid-3" data-ref="products-grid"></div>
+  </div>
+
+  <div class="card card-pad stack-md">
+    <h3 class="card-title row-gap-sm">
+      <span data-ref="cart-icon"></span>
+      <span>Ticket de Consumo</span>
+    </h3>
+
+    <div class="divide-list" data-ref="cart-list"></div>
+
+    <div>
+      <label class="field-label">Canal de venta</label>
+      <select class="select-control text-xs" data-ref="origin">
+        <option value="Restaurante">Punto de Venta (POS)</option>
+        <option value="Room Service">Room Service</option>
+        <option value="Bar">Bar</option>
+        <option value="Minibar">Minibar</option>
+      </select>
+    </div>
+
+    <div>
+      <label class="field-label">Modalidad de cobro</label>
+      <div class="grid-2" data-ref="payment-toggle">
+        <button type="button" class="filter-pill w-full text-center" data-pay="Cargo a Habitación">Cargo a Habitación</button>
+        <button type="button" class="filter-pill w-full text-center" data-pay="Pago Directo">Pago Directo</button>
+      </div>
+    </div>
+
+    <div data-ref="table-wrap" class="hidden">
+      <label class="field-label">Mesa (opcional)</label>
+      <select class="select-control text-xs" data-ref="table-select"></select>
+    </div>
+
+    <div data-ref="folio-wrap">
+      <label class="field-label">Habitación ocupada (Estadía activa)</label>
+      <select class="select-control text-xs" data-ref="folio-select"></select>
+    </div>
+
+    <div class="row-between pt-3 border-t">
+      <span class="text-xs font-medium text-slate-600">Total a registrar</span>
+      <span class="font-mono text-lg font-bold text-navy" data-ref="cart-total"></span>
+    </div>
+
+    <button type="button" class="btn btn-teal w-full hidden" data-ref="submit-btn">
+      <span data-ref="submit-icon"></span>
+      <span data-ref="submit-label">Confirmar</span>
+    </button>
+  </div>
+</div>
+
+<template data-tpl="pos-producto-btn">
+  <button type="button" class="stat-tile is-clickable">
+    <div class="font-mono text-11 text-teal" data-ref="meta"></div>
+    <div class="text-xs font-bold text-navy mt-1 leading-snug" data-ref="name"></div>
+    <div class="font-mono text-sm font-bold text-navy mt-2" data-ref="price"></div>
+  </button>
+</template>
+
+<template data-tpl="pos-carrito-vacio">
+  <div class="py-4 text-xs text-slate-400 text-center">
+    Selecciona productos del catálogo para agregar al carrito.
+  </div>
+</template>
+
+<template data-tpl="pos-carrito-item">
+  <div class="py-2.5 row-between text-xs">
+    <div class="min-w-0 flex-1">
+      <div class="font-medium text-navy truncate" data-ref="name"></div>
+      <div class="font-mono text-11 text-slate-500" data-ref="unit-price"></div>
+    </div>
+    <div class="row-gap-sm shrink-0">
+      <button type="button" class="btn btn-outline btn-xs" data-ref="dec-btn"></button>
+      <span class="font-mono font-semibold" data-ref="qty"></span>
+      <button type="button" class="btn btn-outline btn-xs" data-ref="inc-btn"></button>
+      <span class="font-mono font-bold text-navy" data-ref="subtotal"></span>
+    </div>
+  </div>
+</template>

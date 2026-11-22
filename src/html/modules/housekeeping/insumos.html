@@ -1,0 +1,41 @@
+<div class="stack-md">
+  <div class="grid-3" data-ref="supplies-grid"></div>
+
+  <div class="card card-pad stack-md">
+    <h2 class="card-title">Estado de Solicitudes Enviadas a Almacén</h2>
+    <div class="divide-y" data-ref="requisitions-list"></div>
+  </div>
+</div>
+
+<template data-tpl="card-insumo-hk">
+  <div class="card card-pad stack-md">
+    <div class="row-between items-start">
+      <div>
+        <h3 class="text-sm font-bold text-navy" data-ref="name"></h3>
+        <div class="text-11 text-slate-500 mt-0.5" data-ref="daily"></div>
+      </div>
+      <div data-ref="status"></div>
+    </div>
+    <div class="row-between items-end">
+      <div class="font-mono text-2xl font-bold text-navy" data-ref="stock"></div>
+      <div class="font-mono text-xs text-slate-500" data-ref="unit-min"></div>
+    </div>
+    <div class="row-wrap justify-end gap-2 hidden" data-ref="actions">
+      <button type="button" class="btn btn-outline-muted btn-xs" data-ref="consume-btn">-1 Consumo</button>
+      <button type="button" class="btn btn-teal btn-xs" data-ref="req-btn">
+        <span data-ref="pkg-icon"></span>
+        <span>Solicitar a Almacén</span>
+      </button>
+    </div>
+  </div>
+</template>
+
+<template data-tpl="fila-requisicion-hk">
+  <div class="py-3 row-between">
+    <div class="text-xs">
+      <span class="font-mono font-bold text-navy" data-ref="code"></span>
+      <span class="text-slate-600" data-ref="desc"></span>
+    </div>
+    <div data-ref="status"></div>
+  </div>
+</template>

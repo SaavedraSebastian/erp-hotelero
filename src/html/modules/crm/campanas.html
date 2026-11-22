@@ -1,0 +1,41 @@
+<div class="stack-md">
+  <div class="row-between">
+    <p class="text-xs text-slate-600">Las campañas filtran automáticamente únicamente huéspedes con consentimiento opt-in vigente.</p>
+    <button type="button" class="btn btn-primary btn-sm hidden" data-ref="new-btn">
+      <span data-ref="new-icon"></span>
+      <span>Crear campaña</span>
+    </button>
+  </div>
+
+  <div class="grid-2" data-ref="grid"></div>
+</div>
+
+<template data-tpl="card-campana">
+  <div class="card card-pad stack-sm">
+    <div class="row-between">
+      <span class="text-xs font-semibold text-teal" data-ref="seg-channel"></span>
+      <div data-ref="status"></div>
+    </div>
+    <div>
+      <h3 class="text-sm font-bold text-navy" data-ref="name"></h3>
+      <p class="text-xs text-slate-500 mt-0.5" data-ref="offer"></p>
+    </div>
+    <div class="grid-3 pt-2 text-xs">
+      <div>
+        <div class="text-11 text-slate-400">Enviados</div>
+        <div class="font-mono font-semibold text-navy" data-ref="sent"></div>
+      </div>
+      <div>
+        <div class="text-11 text-slate-400">Apertura</div>
+        <div class="font-mono font-semibold text-navy" data-ref="open-rate"></div>
+      </div>
+      <div>
+        <div class="text-11 text-slate-400">Reservas</div>
+        <div class="font-mono font-semibold text-navy" data-ref="conversions"></div>
+      </div>
+    </div>
+    <div class="row-wrap justify-end pt-1 hidden" data-ref="actions-wrap">
+      <button type="button" class="btn btn-outline btn-xs" data-ref="toggle-btn"></button>
+    </div>
+  </div>
+</template>

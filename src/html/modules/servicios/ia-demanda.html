@@ -1,0 +1,28 @@
+<div class="stack-md">
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title row-gap-sm">
+        <span data-ref="alert-icon"></span>
+        <span data-ref="title">Recomendaciones de Reposición basadas en Consumo y Ocupación</span>
+      </h3>
+    </div>
+    <div class="divide-list" data-ref="suggestions-list"></div>
+  </div>
+
+  <div data-ref="advisor-slot"></div>
+</div>
+
+<template data-tpl="fila-sugerencia-compra">
+  <div class="p-4 row-between">
+    <div>
+      <div class="text-xs font-bold text-navy">
+        <span data-ref="name"></span>
+        <span class="text-slate-400"> · Sugerido pedir </span>
+        <span class="text-teal font-mono" data-ref="qty"></span>
+        <span class="font-mono text-navy" data-ref="cost"></span>
+      </div>
+      <div class="text-11 text-slate-500 mt-0.5" data-ref="detail"></div>
+    </div>
+    <button type="button" class="btn btn-teal btn-xs hidden" data-ref="order-btn">Generar OC sugerida</button>
+  </div>
+</template>

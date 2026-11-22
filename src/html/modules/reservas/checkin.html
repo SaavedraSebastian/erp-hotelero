@@ -1,0 +1,31 @@
+<div class="stack-md">
+  <div data-ref="content"></div>
+</div>
+
+<template data-tpl="card-checkin">
+  <div class="card card-pad stack-md">
+    <div class="row-between items-start">
+      <div class="stack-xs">
+        <span class="font-mono text-xs font-semibold text-teal" data-ref="code-channel"></span>
+        <div class="text-base font-bold text-navy" data-ref="guest"></div>
+        <div class="text-xs text-slate-500" data-ref="meta"></div>
+      </div>
+      <div class="font-mono text-sm font-bold text-navy" data-ref="total"></div>
+    </div>
+    <div>
+      <label class="field-label">Asignar habitación (solo limpias/inspeccionadas):</label>
+      <select class="select-control text-xs" data-ref="room-select"></select>
+    </div>
+    <div class="p-2.5 bg-subtle border rounded-md text-xs text-slate-600 hidden" data-ref="note-box"></div>
+    <div class="alert alert-danger hidden" data-ref="blocked-alert">
+      <span data-ref="warn-icon"></span>
+      <span data-ref="blocked-text"></span>
+    </div>
+    <div class="row-wrap justify-end hidden" data-ref="actions-row">
+      <button type="button" class="btn btn-teal btn-sm" data-ref="checkin-btn">
+        <span data-ref="checkin-icon"></span>
+        <span>Confirmar Check-in</span>
+      </button>
+    </div>
+  </div>
+</template>

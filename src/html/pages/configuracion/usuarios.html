@@ -1,0 +1,32 @@
+<div class="card">
+  <div class="card-header">
+    <div>
+      <h2 class="card-title">Directorio de Usuarios Corporativos</h2>
+      <p class="card-subtitle">Cuentas registradas en base de datos SQLite del servidor con credenciales cifradas (PBKDF2).</p>
+    </div>
+  </div>
+  <div class="table-scroll">
+    <table class="erp-table">
+      <thead>
+        <tr>
+          <th>Nombre</th>
+          <th>Correo</th>
+          <th>Rol Asignado</th>
+          <th>ID Personal Operativo</th>
+          <th>Estado</th>
+        </tr>
+      </thead>
+      <tbody data-ref="tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<template data-tpl="fila-usuario">
+  <tr>
+    <td class="font-medium text-navy" data-ref="name"></td>
+    <td class="font-mono text-slate-600" data-ref="email"></td>
+    <td class="text-teal font-medium" data-ref="role"></td>
+    <td class="font-mono text-slate-500" data-ref="staff-id"></td>
+    <td data-ref="status"></td>
+  </tr>
+</template>

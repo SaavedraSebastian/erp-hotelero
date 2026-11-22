@@ -1,0 +1,32 @@
+<div class="stack-md">
+  <div class="row-wrap" data-ref="filter-pills"></div>
+
+  <div class="card">
+    <div class="table-scroll">
+      <table class="erp-table">
+        <thead>
+          <tr>
+            <th>Huésped</th>
+            <th>Segmento</th>
+            <th>Nivel</th>
+            <th class="text-right">Estadías</th>
+            <th class="text-right">Valor Acumulado</th>
+            <th>Opt-in Campañas</th>
+          </tr>
+        </thead>
+        <tbody data-ref="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<template data-tpl="fila-segmento">
+  <tr>
+    <td class="font-semibold text-navy" data-ref="name"></td>
+    <td class="text-slate-600" data-ref="segment"></td>
+    <td class="font-semibold text-teal" data-ref="tier"></td>
+    <td class="text-right font-mono text-navy" data-ref="stays"></td>
+    <td class="text-right font-mono font-bold text-navy" data-ref="spent"></td>
+    <td data-ref="optin"></td>
+  </tr>
+</template>

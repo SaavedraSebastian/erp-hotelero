@@ -1,0 +1,25 @@
+<div class="stack-sm" data-ref="list"></div>
+
+<template data-tpl="card-resena">
+  <div class="card card-pad stack-sm">
+    <div class="row-between">
+      <div class="text-xs">
+        <strong class="text-navy" data-ref="guest"></strong>
+        <span class="text-slate-400" data-ref="channel-date"></span>
+      </div>
+      <div class="row-gap-sm">
+        <span class="font-mono text-xs font-bold text-warning" data-ref="rating"></span>
+        <div data-ref="sentiment"></div>
+      </div>
+    </div>
+    <p class="text-xs text-slate-700 leading-relaxed" data-ref="comment"></p>
+    <div class="p-3 bg-subtle border rounded-md text-xs text-slate-700 hidden" data-ref="reply-box">
+      <strong class="text-navy">Respuesta Hotel Boulevard: </strong>
+      <span data-ref="reply-text"></span>
+    </div>
+    <div class="row-wrap pt-1 hidden" data-ref="reply-form">
+      <input class="input-control flex-1 text-xs" placeholder="Redactar respuesta oficial del hotel..." data-ref="reply-input" />
+      <button type="button" class="btn btn-primary btn-sm" data-ref="reply-submit">Publicar respuesta</button>
+    </div>
+  </div>
+</template>

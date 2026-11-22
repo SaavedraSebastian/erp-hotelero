@@ -1,0 +1,22 @@
+<div class="stack-md">
+  <div class="grid-2" data-ref="grid"></div>
+</div>
+
+<template data-tpl="card-ot">
+  <div class="card card-pad stack-md">
+    <div class="row-between items-start">
+      <div class="stack-xs">
+        <span class="font-mono text-xs font-semibold text-teal" data-ref="code-location"></span>
+        <div class="text-sm font-bold text-navy" data-ref="desc"></div>
+      </div>
+      <div data-ref="status"></div>
+    </div>
+    <div class="row-between items-center text-xs text-slate-500">
+      <div class="row-wrap gap-3">
+        <span>Técnico: <strong class="text-navy" data-ref="staff"></strong></span>
+        <span>Costo est.: <strong class="font-mono text-navy" data-ref="cost"></strong></span>
+      </div>
+      <button type="button" class="btn btn-teal btn-xs hidden" data-ref="complete-btn">Completar OT</button>
+    </div>
+  </div>
+</template>

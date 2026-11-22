@@ -1,0 +1,48 @@
+<div class="stack-md">
+  <div class="row-between">
+    <p class="text-xs text-slate-500">Detecta automáticamente cruces de fechas o habitaciones fuera de servicio y registra decisiones autorizadas.</p>
+    <button type="button" class="btn btn-primary btn-sm hidden" data-ref="new-waitlist-btn">
+      <span data-ref="plus-icon"></span>
+      <span>Registrar en lista de espera</span>
+    </button>
+  </div>
+
+  <div class="card">
+    <div class="table-scroll">
+      <table class="erp-table">
+        <thead>
+          <tr>
+            <th>Tipo / Fecha</th>
+            <th>Solicitante</th>
+            <th>Categoría y Estadía</th>
+            <th>Estado y Autorización</th>
+            <th class="text-right">Decisión</th>
+          </tr>
+        </thead>
+        <tbody data-ref="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<template data-tpl="fila-espera">
+  <tr>
+    <td>
+      <div data-ref="conflict-badge"></div>
+      <div class="font-mono text-11 text-slate-400 mt-0.5" data-ref="created-at"></div>
+    </td>
+    <td>
+      <div class="font-semibold text-navy" data-ref="guest"></div>
+      <div class="text-11 text-slate-500" data-ref="contact"></div>
+    </td>
+    <td>
+      <div class="text-xs font-medium text-navy" data-ref="room-type"></div>
+      <div class="font-mono text-11 text-slate-500" data-ref="dates"></div>
+    </td>
+    <td>
+      <div data-ref="status-badge"></div>
+      <div class="text-11 text-slate-500 mt-0.5 hidden" data-ref="auth-note"></div>
+    </td>
+    <td class="text-right" data-ref="resolution"></td>
+  </tr>
+</template>

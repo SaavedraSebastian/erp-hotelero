@@ -1,0 +1,25 @@
+<div class="stack-md">
+  <div class="row-between">
+    <p class="text-xs text-slate-500">Los ingredientes configurados se descuentan automáticamente del inventario al vender en POS.</p>
+    <button type="button" class="btn btn-primary btn-sm hidden" data-ref="new-btn">
+      <span data-ref="new-icon"></span>
+      <span>Configurar receta</span>
+    </button>
+  </div>
+
+  <div class="grid-3" data-ref="recipes-grid"></div>
+</div>
+
+<template data-tpl="card-receta">
+  <div class="card card-pad stack-sm">
+    <h3 class="text-sm font-bold text-navy" data-ref="name"></h3>
+    <div class="stack-xs" data-ref="ingredients"></div>
+  </div>
+</template>
+
+<template data-tpl="fila-ingrediente">
+  <div class="row-between text-xs">
+    <span class="text-slate-600" data-ref="item"></span>
+    <span class="font-mono text-teal font-medium" data-ref="qty"></span>
+  </div>
+</template>

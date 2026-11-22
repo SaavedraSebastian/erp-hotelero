@@ -1,0 +1,56 @@
+<div class="stack-md"></div>
+
+<template data-tpl="vista-caja-cerrada">
+  <div class="card card-pad row-between">
+    <div>
+      <h2 class="card-title">No hay turno de caja abierto</h2>
+      <p class="card-subtitle">Abre un turno con fondo inicial para operar cobros y movimientos de caja.</p>
+    </div>
+    <button type="button" class="btn btn-teal hidden" data-ref="open-shift-btn">Abrir Caja (S/ 1,500)</button>
+  </div>
+</template>
+
+<template data-tpl="vista-caja-abierta">
+  <div class="stack-md">
+    <div class="grid-kpis" data-ref="kpis"></div>
+
+    <div class="split-layout-3">
+      <div class="card card-pad stack-sm">
+        <h3 class="card-title row-gap-sm">
+          <span data-ref="wallet-icon"></span>
+          <span>Movimiento / Cierre de Turno</span>
+        </h3>
+        <select class="select-control text-xs" data-ref="move-type">
+          <option value="Egreso">Egreso / Caja chica</option>
+          <option value="Ingreso">Ingreso manual</option>
+        </select>
+        <input class="input-control text-xs" placeholder="Concepto..." data-ref="move-concept" />
+        <input type="number" step="0.5" min="1" class="input-control font-mono text-xs" placeholder="50" data-ref="move-amount" />
+        <div class="stack-xs hidden" data-ref="actions-wrap">
+          <button type="button" class="btn btn-primary btn-sm" data-ref="add-move-btn">Registrar movimiento</button>
+          <div class="pt-2 border-t-soft stack-xs">
+            <input type="number" step="0.5" class="input-control font-mono text-xs" data-ref="close-counted" />
+            <button type="button" class="btn btn-danger-outline btn-sm" data-ref="close-shift-btn">Cerrar turno de caja</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title" data-ref="movements-title">Movimientos del Turno Actual</h3>
+        </div>
+        <div class="divide-list" data-ref="movements-list"></div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<template data-tpl="fila-movimiento-caja">
+  <div class="p-3.5 row-between text-xs">
+    <div>
+      <strong class="text-navy" data-ref="title"></strong>
+      <div class="text-11 font-mono text-slate-400 mt-0.5" data-ref="meta"></div>
+    </div>
+    <span class="font-mono font-bold" data-ref="amount"></span>
+  </div>
+</template>

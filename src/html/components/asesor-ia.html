@@ -1,0 +1,25 @@
+<div class="card card-pad stack-md">
+  <div class="row-between">
+    <div class="row-gap-sm">
+      <span data-ref="cpu-icon"></span>
+      <div>
+        <h3 class="card-title" data-ref="title"></h3>
+        <p class="card-subtitle" data-ref="description"></p>
+      </div>
+    </div>
+  </div>
+
+  <div class="row-wrap" data-ref="chips"></div>
+
+  <div class="row-wrap">
+    <input
+      type="text"
+      class="input-control flex-1"
+      data-ref="prompt-input"
+      placeholder="Escribe una consulta analítica sobre los datos reales de este módulo..."
+    />
+    <button type="button" class="btn btn-primary" data-ref="submit-btn"></button>
+  </div>
+
+  <div data-ref="result-area"></div>
+</div>

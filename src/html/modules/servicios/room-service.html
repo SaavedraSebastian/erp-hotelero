@@ -1,0 +1,42 @@
+<div class="split-layout-3">
+  <form class="card card-pad stack-md" data-ref="rs-form">
+    <h3 class="card-title">Nuevo Pedido Room Service</h3>
+
+    <div>
+      <label class="field-label">Habitación ocupada</label>
+      <select class="select-control text-xs" data-ref="room-select"></select>
+    </div>
+
+    <div>
+      <label class="field-label">Plato / Bebida</label>
+      <select class="select-control text-xs" data-ref="product-select"></select>
+    </div>
+
+    <div>
+      <label class="field-label">Cantidad</label>
+      <input type="number" min="1" value="1" class="input-control text-xs" data-ref="qty" />
+    </div>
+
+    <button type="submit" class="btn btn-teal w-full hidden" data-ref="submit-btn">Registrar Pedido Room Service</button>
+  </form>
+
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Seguimiento de Entregas a Habitaciones</h3>
+    </div>
+    <div class="divide-list" data-ref="orders-list"></div>
+  </div>
+</div>
+
+<template data-tpl="fila-pedido-rs">
+  <div class="p-4 row-between">
+    <div>
+      <div class="font-mono text-xs font-bold text-navy" data-ref="title"></div>
+      <div class="text-11 text-slate-500 mt-0.5" data-ref="items"></div>
+    </div>
+    <div class="row-gap-sm">
+      <div data-ref="status"></div>
+      <button type="button" class="btn btn-teal btn-xs hidden" data-ref="deliver-btn">Entregar</button>
+    </div>
+  </div>
+</template>

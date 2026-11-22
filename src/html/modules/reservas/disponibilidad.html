@@ -1,0 +1,47 @@
+<div class="stack-md">
+  <div class="card card-pad row-between">
+    <div class="row-wrap gap-3">
+      <div>
+        <label class="field-label">Fecha ingreso</label>
+        <input type="date" class="input-control text-xs" data-ref="filter-in" />
+      </div>
+      <div>
+        <label class="field-label">Fecha salida</label>
+        <input type="date" class="input-control text-xs" data-ref="filter-out" />
+      </div>
+      <div>
+        <label class="field-label">Tipo habitación</label>
+        <select class="select-control text-xs" style="min-width:10rem" data-ref="filter-type">
+          <option value="Todos">Todos</option>
+          <option value="Estándar">Estándar</option>
+          <option value="Superior">Superior</option>
+          <option value="Deluxe Vista Mar">Deluxe Vista Mar</option>
+          <option value="Suite Junior">Suite Junior</option>
+          <option value="Suite Presidencial">Suite Presidencial</option>
+        </select>
+      </div>
+    </div>
+    <p class="text-xs text-slate-500">Disponibilidad real: cruza reservas confirmadas y estado físico recibido de Housekeeping.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="row-gap-sm">
+        <span data-ref="cal-icon"></span>
+        <h2 class="card-title">Calendario de Disponibilidad Semanal</h2>
+      </div>
+      <span class="text-11 font-mono text-slate-500">18 Nov – 24 Nov 2026</span>
+    </div>
+    <div class="table-scroll">
+      <table class="erp-table">
+        <thead>
+          <tr data-ref="head-row">
+            <th>Habitación</th>
+            <th>Estado Físico</th>
+          </tr>
+        </thead>
+        <tbody data-ref="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>

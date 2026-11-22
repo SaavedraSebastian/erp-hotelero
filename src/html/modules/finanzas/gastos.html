@@ -1,0 +1,45 @@
+<div class="stack-md">
+  <div class="row-between">
+    <p class="text-xs text-slate-600">Incluye gastos operativos manuales, compras recibidas de Almacén y órdenes de trabajo.</p>
+    <button type="button" class="btn btn-primary btn-sm hidden" data-ref="new-btn">
+      <span data-ref="new-icon"></span>
+      <span>Nuevo gasto</span>
+    </button>
+  </div>
+
+  <div class="card">
+    <div class="table-scroll">
+      <table class="erp-table">
+        <thead>
+          <tr>
+            <th>Fecha / Ref.</th>
+            <th>Categoría / Centro Costo</th>
+            <th>Proveedor y Descripción</th>
+            <th class="text-right">Importe</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody data-ref="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<template data-tpl="fila-gasto">
+  <tr>
+    <td>
+      <div class="font-mono font-semibold text-navy" data-ref="date"></div>
+      <div class="text-11 font-mono text-slate-400" data-ref="doc-ref"></div>
+    </td>
+    <td>
+      <div class="font-semibold text-navy" data-ref="category"></div>
+      <div class="text-11 text-slate-500" data-ref="cost-center"></div>
+    </td>
+    <td>
+      <div class="font-medium text-navy" data-ref="supplier"></div>
+      <div class="text-11 text-slate-500" data-ref="description"></div>
+    </td>
+    <td class="text-right font-mono font-bold text-navy" data-ref="amount"></td>
+    <td data-ref="status"></td>
+  </tr>
+</template>

@@ -1,0 +1,46 @@
+<div class="stack-md">
+  <div class="row-wrap justify-end hidden" data-ref="header-actions">
+    <button type="button" class="btn btn-primary btn-sm" data-ref="new-btn">
+      <span data-ref="new-icon"></span>
+      <span>Nueva solicitud</span>
+    </button>
+  </div>
+
+  <div class="card">
+    <div class="table-scroll">
+      <table class="erp-table">
+        <thead>
+          <tr>
+            <th>Código / Origen</th>
+            <th>Huésped / Hab.</th>
+            <th>Requerimiento y Área Derivada</th>
+            <th>Estado</th>
+            <th class="text-right hidden" data-ref="th-actions">Acciones</th>
+          </tr>
+        </thead>
+        <tbody data-ref="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<template data-tpl="fila-solicitud">
+  <tr>
+    <td>
+      <div class="font-mono font-bold text-navy" data-ref="code"></div>
+      <div class="text-11 text-slate-400" data-ref="source"></div>
+    </td>
+    <td>
+      <div class="font-semibold text-navy" data-ref="guest"></div>
+      <div class="text-11 font-mono text-slate-500" data-ref="room"></div>
+    </td>
+    <td>
+      <div class="font-semibold text-teal" data-ref="type-area"></div>
+      <div class="text-11 text-slate-600 mt-0.5" data-ref="description"></div>
+    </td>
+    <td data-ref="status"></td>
+    <td class="text-right hidden" data-ref="td-actions">
+      <button type="button" class="btn btn-teal btn-xs hidden" data-ref="attend-btn">Marcar Atendida</button>
+    </td>
+  </tr>
+</template>

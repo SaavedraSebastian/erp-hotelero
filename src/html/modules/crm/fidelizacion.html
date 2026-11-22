@@ -1,0 +1,45 @@
+<div class="grid-2-lg">
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title row-gap-sm">
+        <span data-ref="award-icon"></span>
+        <span>Programa Boulevard Rewards — Saldos por Huésped</span>
+      </h2>
+    </div>
+    <div class="divide-list" data-ref="guests-list"></div>
+  </div>
+
+  <div class="card card-pad stack-md">
+    <div>
+      <h2 class="card-title" data-ref="rewards-title">Catálogo de Recompensas</h2>
+      <p class="card-subtitle mt-0.5">
+        <span>Saldo disponible: </span>
+        <strong class="font-mono text-teal" data-ref="points-available"></strong>
+      </p>
+    </div>
+    <div class="stack-sm" data-ref="rewards-list"></div>
+  </div>
+</div>
+
+<template data-tpl="item-fidelizacion-huesped">
+  <button type="button" class="p-3.5 w-full row-between text-left" style="width: 100%; text-align: left; cursor: pointer;">
+    <div>
+      <div class="text-xs font-bold text-navy" data-ref="name"></div>
+      <div class="text-11 text-slate-500 mt-0.5" data-ref="meta"></div>
+    </div>
+    <div class="text-right">
+      <div class="font-mono text-xs font-bold text-teal" data-ref="points"></div>
+      <div class="text-11 text-slate-400">Seleccionar para canje</div>
+    </div>
+  </button>
+</template>
+
+<template data-tpl="item-recompensa">
+  <div class="p-3 border rounded-md row-between">
+    <div>
+      <div class="text-xs font-semibold text-navy" data-ref="label"></div>
+      <div class="text-11 font-mono text-slate-500 mt-0.5" data-ref="cost"></div>
+    </div>
+    <button type="button" class="btn btn-outline btn-xs hidden" data-ref="redeem-btn">Canjear</button>
+  </div>
+</template>
