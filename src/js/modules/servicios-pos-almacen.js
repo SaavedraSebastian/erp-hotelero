@@ -27,6 +27,7 @@ import { formatCurrency } from '../utils/formatters.js';
 import { getRoute, navigateToView } from '../core/router.js';
 import { erpStore } from '../core/store.js';
 import { bindPagedContainer } from '../components/paged-view.js';
+import { localPager, resetLocalPager } from '../components/pagination.js';
 import { getPagedList, setActivePagedList } from '../services/paged-list.js';
 import { mapComandaRows, mapConsumoRows, mapPurchaseOrderRows } from '../services/erp-mappers.js';
 import { TODAY } from '../data/empty-state.js';
@@ -470,10 +471,11 @@ export function renderServiciosPOSModule() {
             (m3Ui.prodCategory === 'Todas' || p.category === m3Ui.prodCategory) &&
             (!q || p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q))
         );
+        const pager = localPager('m3.productos', filtered, renderRows, 10);
         mountRef(
           tabBody,
           'tbody',
-          filtered.map((p) => {
+          pager.slice.map((p) => {
             // El costo sale de la receta vigente o del artículo ligado; sin ninguno de los dos no hay costo ni margen.
             const hasCost = p.cost != null;
             const margin = hasCost && p.price > 0 ? Math.round(((p.price - p.cost) / p.price) * 100) : null;
@@ -492,6 +494,7 @@ export function renderServiciosPOSModule() {
             return row;
           })
         );
+        mountRef(tabBody, 'footer-slot', pager.footer);
       };
 
       mountRef(
@@ -503,12 +506,14 @@ export function renderServiciosPOSModule() {
           focusId: 'm3-prod-search',
           onChange: (v) => {
             m3Ui.prodSearch = v;
+            resetLocalPager('m3.productos');
             renderRows();
           },
         })
       );
       catFilter.addEventListener('change', (e) => {
         m3Ui.prodCategory = e.target.value;
+        resetLocalPager('m3.productos');
         renderRows();
       });
       renderRows();
@@ -520,10 +525,11 @@ export function renderServiciosPOSModule() {
         mountRef(tabBody, 'new-icon', icon('plus', 'w-3.5'));
         getRef(tabBody, 'new-btn').addEventListener('click', () => openServiceModal(null));
       }
+      const servicesPager = localPager('m3.servicios', state.services, renderContent, 10);
       mountRef(
         tabBody,
         'grid',
-        state.services.map((srv) => {
+        servicesPager.slice.map((srv) => {
           const card = clone('card-servicio');
           setText(card, 'code-area', `${srv.code} · ${srv.area}`);
           setText(card, 'price', formatCurrency(srv.price));
@@ -541,6 +547,7 @@ export function renderServiciosPOSModule() {
           return card;
         })
       );
+      mountRef(tabBody, 'footer-slot', servicesPager.footer);
     } else if (activeTab === 'pos') {
       const invById = new Map(state.inventory.map((i) => [i.id, i]));
       const cartTotal = m3Ui.cart.reduce((s, c) => s + c.quantity * c.unitPrice, 0);
@@ -548,6 +555,7 @@ export function renderServiciosPOSModule() {
       const filteredProducts = state.products.filter(
         (p) => p.available !== false && (m3Ui.posCategory === 'Todos' || p.category === m3Ui.posCategory)
       );
+      const posPager = localPager('m3.pos.productos', filteredProducts, renderContent, 10);
 
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.pos);
       tabBody = view;
@@ -559,6 +567,7 @@ export function renderServiciosPOSModule() {
         btn.classList.toggle('is-active', m3Ui.posCategory === cat);
         btn.addEventListener('click', () => {
           m3Ui.posCategory = cat;
+          resetLocalPager('m3.pos.productos');
           renderContent();
         });
       });
@@ -566,7 +575,7 @@ export function renderServiciosPOSModule() {
       mountRef(
         tabBody,
         'products-grid',
-        filteredProducts.map((p) => {
+        posPager.slice.map((p) => {
           const linkedInv = p.linkedInventoryItemId ? invById.get(p.linkedInventoryItemId) : null;
           const outOfStock = p.stockControl === 'Directo' && linkedInv && linkedInv.stock <= 0;
           const btn = clone('pos-producto-btn');
@@ -578,6 +587,7 @@ export function renderServiciosPOSModule() {
           return btn;
         })
       );
+      mountRef(tabBody, 'products-footer', posPager.footer);
 
       const originSel = getRef(tabBody, 'origin');
       originSel.value = m3Ui.posOrigin;
@@ -599,11 +609,14 @@ export function renderServiciosPOSModule() {
       const showTable = m3Ui.posOrigin === 'Restaurante' || m3Ui.posOrigin === 'Bar';
       setVisible(tabBody, 'table-wrap', showTable);
       const tableSel = getRef(tabBody, 'table-select');
+      const availableTables = state.tables.filter((t) => t.status === 'Libre');
       mount(
         tableSel,
-        state.tables.map((t) => h('option', { value: t.number, selected: m3Ui.posTable === t.number }, `${t.number} · ${t.zone} (${t.status})`))
+        availableTables.length === 0
+          ? h('option', { value: '' }, 'Sin mesas disponibles')
+          : availableTables.map((t) => h('option', { value: t.number, selected: m3Ui.posTable === t.number }, `${t.number} · ${t.zone}`))
       );
-      if (!state.tables.some((t) => t.number === m3Ui.posTable)) m3Ui.posTable = state.tables[0]?.number || '';
+      if (!availableTables.some((t) => t.number === m3Ui.posTable)) m3Ui.posTable = availableTables[0]?.number || '';
       tableSel.value = m3Ui.posTable;
       tableSel.addEventListener('change', (e) => {
         m3Ui.posTable = e.target.value;
@@ -668,10 +681,11 @@ export function renderServiciosPOSModule() {
       tabBody = view;
       mountRef(tabBody, 'monitor-icon', icon('chefHat', 'w-4 text-teal'));
 
+      const tablesPager = localPager('m3.restaurante.mesas', state.tables, renderContent, 10);
       mountRef(
         tabBody,
         'tables-grid',
-        state.tables.map((tb) => {
+        tablesPager.slice.map((tb) => {
           const card = clone('card-mesa');
           setText(card, 'title', `Mesa ${tb.number}`);
           setText(card, 'meta', tb.seats > 0 ? `${tb.zone} · ${tb.seats} personas` : tb.zone);
@@ -703,6 +717,7 @@ export function renderServiciosPOSModule() {
           return card;
         })
       );
+      mountRef(tabBody, 'tables-footer', tablesPager.footer);
 
       const renderOrderRows = (rows) =>
         h('div', null, ...rows.map((ord) => {
@@ -910,10 +925,11 @@ export function renderServiciosPOSModule() {
         });
       }
 
+      const servicesCompPager = localPager('m3.servicios-comp', activeServices, renderContent, 10);
       mountRef(
         tabBody,
         'services-list',
-        activeServices.map((srv) => {
+        servicesCompPager.slice.map((srv) => {
           const row = clone('fila-tarifa-servicio');
           setText(row, 'name', srv.name);
           setText(row, 'area', srv.area);
@@ -922,6 +938,7 @@ export function renderServiciosPOSModule() {
           return row;
         })
       );
+      mountRef(tabBody, 'services-footer', servicesCompPager.footer);
     } else if (activeTab === 'inventario') {
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.inventario);
       tabBody = view;
@@ -936,10 +953,11 @@ export function renderServiciosPOSModule() {
         StatTile({ label: 'Solicitudes Pendientes', value: pendingReqs.length, tone: 'teal' })
       );
 
+      const reqPager = localPager('m3.inventario.requisiciones', state.supplyRequisitions, renderContent, 10);
       mountRef(
         tabBody,
         'req-list',
-        state.supplyRequisitions.map((req) => {
+        reqPager.slice.map((req) => {
           const invItem = state.inventory.find((i) => i.id === req.inventoryItemId);
           const row = clone('fila-requisicion');
           setText(row, 'title', `${req.code} · ${req.itemName} (${req.quantity} ${req.unit})`);
@@ -964,16 +982,18 @@ export function renderServiciosPOSModule() {
           return row;
         })
       );
+      mountRef(tabBody, 'req-footer', reqPager.footer);
 
       setVisible(tabBody, 'actions-th', canEditCurrentTab);
 
       const renderInvRows = () => {
         const q = m3Ui.search.trim().toLowerCase();
         const filtered = state.inventory.filter((i) => !q || i.name.toLowerCase().includes(q) || i.sku.toLowerCase().includes(q));
+        const invPager = localPager('m3.inventario.items', filtered, renderInvRows, 10);
         mountRef(
           tabBody,
           'inv-tbody',
-          filtered.map((item) => {
+          invPager.slice.map((item) => {
             const low = item.stock <= item.minStock;
             const soon = isExpiringSoon(item.expiryDate);
             const row = clone('fila-inventario');
@@ -1007,6 +1027,7 @@ export function renderServiciosPOSModule() {
             return row;
           })
         );
+        mountRef(tabBody, 'inv-footer', invPager.footer);
       };
 
       mountRef(
@@ -1018,6 +1039,7 @@ export function renderServiciosPOSModule() {
           focusId: 'm3-inv-search',
           onChange: (v) => {
             m3Ui.search = v;
+            resetLocalPager('m3.inventario.items');
             renderInvRows();
           },
         })
@@ -1029,10 +1051,11 @@ export function renderServiciosPOSModule() {
       }
       renderInvRows();
 
+      const kardexPager = localPager('m3.inventario.kardex', state.inventoryMovements, renderContent, 10);
       mountRef(
         tabBody,
         'kardex-list',
-        state.inventoryMovements.slice(0, 6).map((mv) => {
+        kardexPager.slice.map((mv) => {
           const row = clone('fila-kardex');
           setText(row, 'title', `${mv.type} · ${mv.itemName}`);
           setText(row, 'ref', `(${mv.reference})`);
@@ -1044,6 +1067,7 @@ export function renderServiciosPOSModule() {
           return row;
         })
       );
+      mountRef(tabBody, 'kardex-footer', kardexPager.footer);
     } else if (activeTab === 'proveedores') {
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.proveedores);
       tabBody = view;
@@ -1102,10 +1126,11 @@ export function renderServiciosPOSModule() {
         noMatch: { iconName: 'truck', title: 'Sin órdenes coincidentes', description: 'Prueba con otro estado, fechas o búsqueda.' },
       });
 
+      const suppliersPager = localPager('m3.proveedores', state.suppliers, renderContent, 10);
       mountRef(
         tabBody,
         'sup-grid',
-        state.suppliers.map((sup) => {
+        suppliersPager.slice.map((sup) => {
           const card = clone('card-proveedor');
           setText(card, 'name', sup.name);
           setText(card, 'rating', sup.rating == null ? 'Sin calificación' : `★ ${sup.rating}`);
@@ -1114,6 +1139,7 @@ export function renderServiciosPOSModule() {
           return card;
         })
       );
+      mountRef(tabBody, 'sup-footer', suppliersPager.footer);
     } else if (activeTab === 'recetas') {
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.recetas);
       tabBody = view;
@@ -1123,10 +1149,11 @@ export function renderServiciosPOSModule() {
         getRef(tabBody, 'new-btn').addEventListener('click', openRecipeModal);
       }
 
+      const recipesPager = localPager('m3.recetas', state.recipes, renderContent, 10);
       mountRef(
         tabBody,
         'recipes-grid',
-        state.recipes.map((rec) => {
+        recipesPager.slice.map((rec) => {
           const card = clone('card-receta');
           setText(card, 'name', rec.productName);
           mountRef(
@@ -1142,6 +1169,7 @@ export function renderServiciosPOSModule() {
           return card;
         })
       );
+      mountRef(tabBody, 'footer-slot', recipesPager.footer);
     } else if (activeTab === 'ia_demanda') {
       const supById = new Map(state.suppliers.map((s) => [s.id, s]));
       const occupiedCount = state.rooms.filter((r) => r.commercialStatus === 'Ocupada').length;
@@ -1151,12 +1179,13 @@ export function renderServiciosPOSModule() {
       mountRef(tabBody, 'alert-icon', icon('alertTriangle', 'w-4 text-warning'));
       setText(tabBody, 'title', `Recomendaciones de Reposición basadas en Consumo y Ocupación (${occupancyPct}%)`);
 
+      const suggestionsPager = localPager('m3.ia-demanda', lowStockItems, renderContent, 10);
       mountRef(
         tabBody,
         'suggestions-list',
         lowStockItems.length === 0
           ? h('div', { className: 'p-4 text-xs text-slate-500' }, 'Todos los insumos se encuentran sobre su stock mínimo.')
-          : lowStockItems.map((item) => {
+          : suggestionsPager.slice.map((item) => {
               const sugQty = Math.max(8, Math.ceil(item.minStock * 1.2));
               const sugCost = sugQty * item.unitCost;
               const sup = supById.get(item.supplierId) || state.suppliers[0];
@@ -1186,6 +1215,7 @@ export function renderServiciosPOSModule() {
               return row;
             })
       );
+      mountRef(tabBody, 'footer-slot', suggestionsPager.footer);
 
       mountRef(
         tabBody,
