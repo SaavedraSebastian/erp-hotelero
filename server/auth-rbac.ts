@@ -7,7 +7,7 @@ const ALL_M2 = ['estado_habitaciones', 'limpieza', 'inspeccion', 'personal', 'in
 const ALL_M3 = ['productos', 'servicios', 'pos', 'restaurante', 'room_service', 'minibar', 'servicios_comp', 'inventario', 'proveedores', 'recetas', 'ia_demanda'];
 const ALL_M4 = ['folios', 'facturacion', 'pagos', 'cxc', 'caja', 'gastos', 'costos', 'reportes', 'sunat', 'ia_financiera'];
 const ALL_M5 = ['perfil_360', 'segmentacion', 'fidelizacion', 'campanas', 'reclamos', 'solicitudes', 'encuestas', 'resenas', 'portal_ia', 'ia_conversacional'];
-const ALL_CONFIG = ['rbac', 'usuarios', 'auditoria'];
+const ALL_CONFIG = ['rbac', 'usuarios', 'iso', 'supabase', 'auditoria'];
 
 const LEGACY_TAB_MAP: Record<ModuleKey, Record<string, string>> = {
   dashboard: {},

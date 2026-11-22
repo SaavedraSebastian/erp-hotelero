@@ -26,7 +26,7 @@ const ALL_APP_TABS = {
   m3: ['productos', 'servicios', 'pos', 'restaurante', 'room_service', 'minibar', 'servicios_comp', 'inventario', 'proveedores', 'recetas', 'ia_demanda'],
   m4: ['folios', 'facturacion', 'pagos', 'cxc', 'caja', 'gastos', 'costos', 'reportes', 'sunat', 'ia_financiera'],
   m5: ['perfil_360', 'segmentacion', 'fidelizacion', 'campanas', 'reclamos', 'solicitudes', 'encuestas', 'resenas', 'portal_ia', 'ia_conversacional'],
-  config: ['rbac', 'usuarios', 'auditoria'],
+  config: ['rbac', 'usuarios', 'iso', 'supabase', 'auditoria'],
 };
 
 const OFFICIAL_ROLE_FALLBACK_MODULES = {
