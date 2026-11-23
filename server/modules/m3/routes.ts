@@ -8,7 +8,9 @@ import { PERMISSIONS } from '../seguridad/permissions.ts';
 import * as ctrl from './controller.ts';
 import {
   createComandaBodySchema,
+  comandaItemBodySchema,
   createConsumoBodySchema,
+  createSolicitudServicioBodySchema,
   createMovimientoInventarioBodySchema,
   createOrdenCompraBodySchema,
   decisionOrdenCompraBodySchema,
@@ -17,6 +19,11 @@ import {
   m3IdParamSchema,
   motivoBodySchema,
   recibirOrdenCompraBodySchema,
+  updateComandaItemBodySchema,
+  updateConsumoBodySchema,
+  updateOrdenCompraBodySchema,
+  updateSolicitudServicioBodySchema,
+  completarSolicitudServicioBodySchema,
   updatePrecioItemBodySchema,
 } from './schemas.ts';
 
@@ -44,6 +51,19 @@ export function createM3Router(): Router {
     requirePermission(PERMISSIONS.M3_COMANDA_CREAR),
     validateBody(createComandaBodySchema),
     ctrl.createComanda
+  );
+  router.post(
+    '/comandas/:id/items',
+    requirePermission(PERMISSIONS.M3_COMANDA_ACTUALIZAR),
+    validateParams(m3IdParamSchema),
+    validateBody(comandaItemBodySchema),
+    ctrl.agregarItemComanda
+  );
+  router.put(
+    '/comandas/:id/items/:itemId',
+    requirePermission(PERMISSIONS.M3_COMANDA_ACTUALIZAR),
+    validateBody(updateComandaItemBodySchema),
+    ctrl.actualizarItemComanda
   );
   router.post(
     '/comandas/:id/iniciar-preparacion',
@@ -84,6 +104,13 @@ export function createM3Router(): Router {
     validateBody(createConsumoBodySchema),
     ctrl.createConsumo
   );
+  router.put(
+    '/consumos/:id',
+    requirePermission(PERMISSIONS.M3_CONSUMO_CREAR),
+    validateParams(m3IdParamSchema),
+    validateBody(updateConsumoBodySchema),
+    ctrl.actualizarConsumo
+  );
   router.post(
     '/consumos/:id/confirmar',
     requirePermission(PERMISSIONS.M3_CONSUMO_CONFIRMAR),
@@ -106,10 +133,63 @@ export function createM3Router(): Router {
   );
 
   router.get(
+    '/solicitudes-servicio',
+    requirePermission(PERMISSIONS.M3_CONSUMO_CONSULTAR),
+    validateQuery(paginationQuerySchema),
+    ctrl.listSolicitudesServicio
+  );
+  router.post(
+    '/solicitudes-servicio',
+    requirePermission(PERMISSIONS.M3_CONSUMO_CREAR),
+    validateBody(createSolicitudServicioBodySchema),
+    ctrl.createSolicitudServicio
+  );
+  router.put(
+    '/solicitudes-servicio/:id',
+    requirePermission(PERMISSIONS.M3_CONSUMO_CREAR),
+    validateParams(m3IdParamSchema),
+    validateBody(updateSolicitudServicioBodySchema),
+    ctrl.actualizarSolicitudServicio
+  );
+  router.post(
+    '/solicitudes-servicio/:id/iniciar',
+    requirePermission(PERMISSIONS.M3_CONSUMO_CONFIRMAR),
+    validateParams(m3IdParamSchema),
+    ctrl.iniciarSolicitudServicio
+  );
+  router.post(
+    '/solicitudes-servicio/:id/completar',
+    requirePermission(PERMISSIONS.M3_CONSUMO_CONFIRMAR),
+    validateParams(m3IdParamSchema),
+    validateBody(completarSolicitudServicioBodySchema),
+    ctrl.completarSolicitudServicio
+  );
+  router.post(
+    '/solicitudes-servicio/:id/cancelar',
+    requirePermission(PERMISSIONS.M3_CONSUMO_ANULAR),
+    validateParams(m3IdParamSchema),
+    validateBody(motivoBodySchema),
+    ctrl.cancelarSolicitudServicio
+  );
+
+  router.get(
     '/inventario',
     requirePermission(PERMISSIONS.M3_INVENTARIO_CONSULTAR),
     validateQuery(paginationQuerySchema),
     ctrl.listInventario
+  );
+  router.get(
+    '/inventario/kardex',
+    requirePermission(PERMISSIONS.M3_INVENTARIO_CONSULTAR),
+    validateQuery(paginationQuerySchema),
+    ctrl.listKardexGeneral
+  );
+  router.get(
+    '/inventario/:id/kardex',
+    requirePermission(PERMISSIONS.M3_INVENTARIO_CONSULTAR),
+    validateParams(m3IdParamSchema),
+    validateQuery(paginationQuerySchema),
+    ctrl.listKardex
   );
   router.post(
     '/inventario/movimientos',
@@ -129,6 +209,20 @@ export function createM3Router(): Router {
     requirePermission(PERMISSIONS.M3_COMPRA_PREPARAR),
     validateBody(createOrdenCompraBodySchema),
     ctrl.createOrdenCompra
+  );
+  router.put(
+    '/ordenes-compra/:id',
+    requirePermission(PERMISSIONS.M3_COMPRA_PREPARAR),
+    validateParams(m3IdParamSchema),
+    validateBody(updateOrdenCompraBodySchema),
+    ctrl.actualizarOrdenCompra
+  );
+  router.post(
+    '/ordenes-compra/:id/cancelar',
+    requirePermission(PERMISSIONS.M3_COMPRA_PREPARAR),
+    validateParams(m3IdParamSchema),
+    validateBody(motivoBodySchema),
+    ctrl.cancelarOrdenCompra
   );
   router.post(
     '/ordenes-compra/:id/aprobar',
@@ -157,6 +251,12 @@ export function createM3Router(): Router {
     validateParams(m3IdParamSchema),
     validateBody(recibirOrdenCompraBodySchema),
     ctrl.recibirOrdenCompra
+  );
+  router.post(
+    '/ordenes-compra/:id/recepciones/:recepcionId/anular',
+    requirePermission(PERMISSIONS.M3_COMPRA_RECIBIR),
+    validateBody(motivoBodySchema),
+    ctrl.anularRecepcionCompra
   );
 
   registerM3Gestion(router);

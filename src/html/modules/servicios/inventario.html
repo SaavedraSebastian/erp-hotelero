@@ -15,10 +15,13 @@
   <div class="stack-md">
     <div class="row-between">
       <div data-ref="search-slot"></div>
-      <button type="button" class="btn btn-primary btn-sm hidden" data-ref="new-item-btn">
-        <span data-ref="new-item-icon"></span>
-        <span>Nuevo insumo</span>
-      </button>
+      <div class="row-wrap">
+        <button type="button" class="btn btn-outline btn-sm hidden" data-ref="manage-categories-btn">Gestionar categorías</button>
+        <button type="button" class="btn btn-primary btn-sm hidden" data-ref="new-item-btn">
+          <span data-ref="new-item-icon"></span>
+          <span>Nuevo insumo</span>
+        </button>
+      </div>
     </div>
 
     <div class="card">
@@ -83,10 +86,11 @@
     <td class="font-mono text-xs" data-ref="expiry"></td>
     <td data-ref="status"></td>
     <td class="text-right hidden" data-ref="action-cell">
-      <button type="button" class="btn btn-outline btn-xs" data-ref="adjust-btn">
-        <span data-ref="adjust-icon"></span>
-        <span>Ajustar</span>
-      </button>
+      <div class="row-wrap justify-end">
+        <button type="button" class="btn btn-outline btn-xs" data-ref="adjust-btn"><span data-ref="adjust-icon"></span><span>Ajustar</span></button>
+        <button type="button" class="btn btn-outline btn-xs" data-ref="edit-btn">Editar</button>
+        <button type="button" class="btn btn-outline-muted btn-xs" data-ref="status-btn"></button>
+      </div>
     </td>
   </tr>
 </template>

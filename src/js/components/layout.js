@@ -207,9 +207,26 @@ export function renderERPLayout(outletNode) {
   const mobileMenuBtn = getRef(wrapper, 'mobile-menu-btn');
   const searchInput = getRef(wrapper, 'search-input');
   const searchDropdown = getRef(wrapper, 'search-dropdown');
+  const siteSelectorWrap = getRef(wrapper, 'site-selector-wrap');
+  const siteSelector = getRef(wrapper, 'site-selector');
   const notifAnchor = getRef(wrapper, 'notif-anchor');
   const profileAnchor = getRef(wrapper, 'profile-anchor');
   const viewport = getRef(wrapper, 'viewport');
+
+  if (siteSelector && (currentUser.sites?.length ?? 0) > 0) {
+    mount(siteSelector, currentUser.sites.map((site) => h('option', {
+      value: site.id,
+      selected: site.id === currentUser.activeSiteId,
+    }, site.nombre)));
+    siteSelector.value = currentUser.activeSiteId;
+    setVisible(wrapper, 'site-selector-wrap', true);
+    siteSelector.addEventListener('change', async () => {
+      siteSelector.disabled = true;
+      await erpStore.selectSite(siteSelector.value);
+    });
+  } else if (siteSelectorWrap) {
+    siteSelectorWrap.classList.add('hidden');
+  }
 
   mountRef(wrapper, 'search-icon', icon('search', 'topbar-search-icon'));
   const shellEl = wrapper.querySelector?.('.erp-shell') ?? wrapper.firstElementChild;

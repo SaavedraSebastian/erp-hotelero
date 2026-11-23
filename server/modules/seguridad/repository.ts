@@ -125,7 +125,7 @@ async function detectSecuritySchemaLayout(): Promise<SecuritySchemaLayout> {
   }
 }
 
-export async function resolveErpAuthContext(authUserId: string): Promise<AuthContext> {
+export async function resolveErpAuthContext(authUserId: string, requestedSedeId?: string): Promise<AuthContext> {
   if (!isDatabaseConfigured()) {
     throw new ServiceUnavailableError(
       'La conexión PostgreSQL/Supabase aún no está configurada en el servidor.',
@@ -256,6 +256,41 @@ export async function resolveErpAuthContext(authUserId: string): Promise<AuthCon
         )
       );
 
+    const multisedeExists = await client.query<{ exists: boolean }>(
+      `SELECT to_regclass('configuracion.sede') IS NOT NULL
+          AND to_regclass('configuracion.usuario_sede') IS NOT NULL AS exists`
+    );
+    let sedes: AuthContext['sedes'] = [{
+      id: 'SEDE-PRINCIPAL', codigo: 'PRINCIPAL', nombre: 'Sede Principal',
+      nombreComercial: 'Hotel Boulevard', predeterminada: true,
+    }];
+    if (multisedeExists.rows[0]?.exists) {
+      const sedesRes = await client.query<{
+        id_sede: string; codigo: string; nombre: string; nombre_comercial: string; es_predeterminada: boolean;
+      }>(
+        `SELECT s.id_sede, s.codigo, s.nombre, s.nombre_comercial, us.es_predeterminada
+         FROM configuracion.usuario_sede us
+         JOIN configuracion.sede s ON s.id_sede = us.id_sede
+         WHERE us.id_usuario = $1 AND us.estado = 'activo' AND s.estado = 'activa'
+         ORDER BY us.es_predeterminada DESC, s.nombre`,
+        [user.usuario_id]
+      );
+      sedes = sedesRes.rows.map((s) => ({
+        id: s.id_sede,
+        codigo: s.codigo,
+        nombre: s.nombre,
+        nombreComercial: s.nombre_comercial,
+        predeterminada: s.es_predeterminada,
+      }));
+      if (sedes.length === 0) {
+        throw new ForbiddenError('Tu usuario no tiene ninguna sede activa asignada.', 'ERP_USER_WITHOUT_SITE');
+      }
+    }
+    const sedeId = requestedSedeId || sedes.find((s) => s.predeterminada)?.id || sedes[0].id;
+    if (!sedes.some((s) => s.id === sedeId)) {
+      throw new ForbiddenError('No tienes acceso a la sede solicitada.', 'ERP_SITE_ACCESS_DENIED');
+    }
+
     return {
       authUserId,
       usuarioId: user.usuario_id,
@@ -268,6 +303,8 @@ export async function resolveErpAuthContext(authUserId: string): Promise<AuthCon
       roles,
       permisos,
       canViewFullPII,
+      sedeId,
+      sedes,
     };
   } finally {
     client.release();
@@ -276,6 +313,7 @@ export async function resolveErpAuthContext(authUserId: string): Promise<AuthCon
 
 export async function listSecurityDirectory(): Promise<
   Array<{
+    id: string;
     name: string;
     email: string;
     role: string;
@@ -337,6 +375,7 @@ export async function listSecurityDirectory(): Promise<
     const depExpr = layout.depColumn ? `COALESCE(u.${layout.depColumn}, '')::text` : "''::text";
 
     const rowsRes = await client.query<{
+      id_usuario: string;
       codigo_usuario: string;
       nombre: string;
       email: string | null;
@@ -345,6 +384,7 @@ export async function listSecurityDirectory(): Promise<
       roles: string[] | null;
     }>(
       `SELECT
+         u.${layout.pkColumn}::text AS id_usuario,
          u.${layout.codeColumn}::text AS codigo_usuario,
          u.${layout.nameColumn}::text AS nombre,
          ${emailExpr} AS email,
@@ -361,6 +401,7 @@ export async function listSecurityDirectory(): Promise<
     return rowsRes.rows.map((r) => {
       const rolesList = Array.isArray(r.roles) ? r.roles.filter(Boolean) : [];
       return {
+        id: r.id_usuario,
         name: r.nombre,
         email: r.email && r.email.includes('@') ? r.email : `${r.codigo_usuario}@hotelboulevard.pe`,
         role: (rolesList[0] ?? 'usuario').toLowerCase(),

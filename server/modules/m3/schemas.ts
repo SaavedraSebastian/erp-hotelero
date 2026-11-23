@@ -41,6 +41,17 @@ export const createComandaBodySchema = z
     path: ['id_estadia_externa'],
   });
 
+export const comandaItemBodySchema = z.object({
+  id_item_catalogo: varcharIdSchema,
+  cantidad: z.coerce.number().positive().max(1000),
+  observacion_preparacion: z.string().trim().max(500).optional().nullable(),
+});
+
+export const updateComandaItemBodySchema = z.object({
+  cantidad: z.coerce.number().positive().max(1000),
+  observacion_preparacion: z.string().trim().max(500).optional().nullable(),
+});
+
 export const entregarComandaBodySchema = z.object({
   forma_cobro: z.enum(['pago directo', 'cargo a la habitación', 'incluido en paquete']),
   id_cuenta_cobro_externa: varcharIdSchema.optional().nullable(),
@@ -84,6 +95,30 @@ export const createConsumoBodySchema = z
     }
   );
 
+export const updateConsumoBodySchema = createConsumoBodySchema.omit({
+  id_punto_venta: true,
+  id_estadia_externa: true,
+});
+
+export const createSolicitudServicioBodySchema = z.object({
+  id_estadia_externa: varcharIdSchema,
+  id_item_catalogo: varcharIdSchema,
+  cantidad_solicitada: z.coerce.number().positive().max(1000),
+  fecha_hora_prevista: z.string().datetime({ offset: true }).optional().nullable(),
+});
+
+export const updateSolicitudServicioBodySchema = z.object({
+  cantidad_solicitada: z.coerce.number().positive().max(1000).optional(),
+  fecha_hora_prevista: z.string().datetime({ offset: true }).optional().nullable(),
+}).refine((v) => Object.keys(v).length > 0, { message: 'Indica al menos un campo a modificar.' });
+
+export const completarSolicitudServicioBodySchema = z.object({
+  cantidad_prestada: z.coerce.number().positive().max(1000),
+  forma_cobro: z.enum(['pago directo', 'cargo a la habitación', 'incluido en paquete']),
+  id_cuenta_cobro_externa: varcharIdSchema.optional().nullable(),
+  id_paquete_externo: varcharIdSchema.optional().nullable(),
+});
+
 export const createMovimientoInventarioBodySchema = z.object({
   id_articulo: varcharIdSchema,
   id_lote: varcharIdSchema.optional().nullable(),
@@ -111,6 +146,8 @@ export const createOrdenCompraBodySchema = z.object({
     .min(1)
     .max(50),
 });
+
+export const updateOrdenCompraBodySchema = createOrdenCompraBodySchema;
 
 export const decisionOrdenCompraBodySchema = z.object({
   motivo_decision: motivoSchema,

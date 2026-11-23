@@ -13,8 +13,12 @@
 
 <template data-tpl="card-receta">
   <div class="card card-pad stack-sm">
-    <h3 class="text-sm font-bold text-navy" data-ref="name"></h3>
+    <div class="row-between">
+      <h3 class="text-sm font-bold text-navy" data-ref="name"></h3>
+      <span class="text-11 font-mono text-slate-500" data-ref="version"></span>
+    </div>
     <div class="stack-xs" data-ref="ingredients"></div>
+    <button type="button" class="btn btn-outline-muted btn-xs hidden" data-ref="disable-btn">Desactivar receta</button>
   </div>
 </template>
 

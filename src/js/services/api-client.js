@@ -1,4 +1,5 @@
 import { authHeaders } from './auth-client.js';
+import { getActiveSiteId } from './site-context.js';
 
 export class ApiClientError extends Error {
   constructor(message, { status = 500, code = 'API_ERROR', requestId = null, fieldErrors = null } = {}) {
@@ -52,6 +53,8 @@ export async function apiV1Request(path, options = {}) {
         ...authHeaders(),
         ...extraHeaders,
       };
+      const activeSiteId = getActiveSiteId();
+      if (activeSiteId && !headers['X-Sede-Id']) headers['X-Sede-Id'] = activeSiteId;
       if (body !== undefined) {
         headers['Content-Type'] = 'application/json';
       }
@@ -112,6 +115,14 @@ export async function apiV1Request(path, options = {}) {
 
 export const v1Api = {
   getEstablecimiento: () => apiV1Request('/configuracion/establecimiento'),
+  getSedes: () => apiV1Request('/configuracion/sedes'),
+  createSede: (payload) => apiV1Request('/configuracion/sedes', { method: 'POST', body: payload }),
+  updateSede: (id, payload) => apiV1Request(`/configuracion/sedes/${encodeURIComponent(id)}`, { method: 'PUT', body: payload }),
+  assignUserToSede: (sedeId, userId, payload) => apiV1Request(
+    `/configuracion/sedes/${encodeURIComponent(sedeId)}/usuarios/${encodeURIComponent(userId)}`,
+    { method: 'PUT', body: payload }
+  ),
+  getSedeUsers: (sedeId) => apiV1Request(`/configuracion/sedes/${encodeURIComponent(sedeId)}/usuarios`),
   getSessionMe: () => apiV1Request('/session/me'),
   getDashboardResumen: () => apiV1Request('/dashboard/resumen'),
   getBitacoras: (modulo = 'ALL', page = 1, pageSize = 50) =>

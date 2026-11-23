@@ -1,5 +1,8 @@
 <div class="pos-layout">
   <div class="card card-pad stack-md">
+    <div class="row-wrap justify-end">
+      <button type="button" class="btn btn-outline btn-sm hidden" data-ref="manage-pos-btn">Configurar puntos de venta</button>
+    </div>
     <div class="row-wrap" data-ref="categories">
       <button type="button" class="filter-pill" data-cat="Todos">Todos</button>
       <button type="button" class="filter-pill" data-cat="Restaurante">Restaurante</button>
@@ -59,6 +62,16 @@
   </div>
 </div>
 
+<details class="card mt-4" open>
+  <summary class="card-header cursor-pointer">
+    <div>
+      <h3 class="card-title">Historial General de Consumos</h3>
+      <p class="text-11 text-slate-500">Consumos de restaurante, bar, minibar, room service y servicios complementarios.</p>
+    </div>
+  </summary>
+  <div class="divide-list" data-ref="consumption-history"></div>
+</details>
+
 <template data-tpl="pos-producto-btn">
   <button type="button" class="stat-tile is-clickable">
     <div class="font-mono text-11 text-teal" data-ref="meta"></div>
@@ -84,6 +97,23 @@
       <span class="font-mono font-semibold" data-ref="qty"></span>
       <button type="button" class="btn btn-outline btn-xs" data-ref="inc-btn"></button>
       <span class="font-mono font-bold text-navy" data-ref="subtotal"></span>
+    </div>
+  </div>
+</template>
+
+<template data-tpl="fila-historial-consumo">
+  <div class="p-4 row-between gap-3">
+    <div class="min-w-0">
+      <div class="text-xs font-semibold text-navy" data-ref="title"></div>
+      <div class="text-11 text-slate-500 mt-0.5" data-ref="items"></div>
+      <div class="text-11 text-slate-500 mt-0.5" data-ref="meta"></div>
+    </div>
+    <div class="row-wrap justify-end shrink-0">
+      <span class="font-mono font-semibold text-navy" data-ref="total"></span>
+      <span data-ref="status"></span>
+      <button type="button" class="btn btn-teal btn-sm hidden" data-ref="confirm-btn">Confirmar</button>
+      <button type="button" class="btn btn-outline-muted btn-sm hidden" data-ref="discard-btn">Descartar</button>
+      <button type="button" class="btn btn-outline-muted btn-sm hidden" data-ref="annul-btn">Anular</button>
     </div>
   </div>
 </template>

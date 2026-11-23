@@ -1,6 +1,9 @@
 import crypto from 'node:crypto';
 import { GoogleGenAI, ThinkingLevel, Type, type Schema } from '@google/genai';
 import { z } from 'zod';
+import { ConflictError, ForbiddenError } from '../../shared/errors/app-error.ts';
+import { buildPaginatedResponse } from '../../shared/pagination/index.ts';
+import type { PaginationParams } from '../../shared/types/context.ts';
 import { getEnv } from '../../config/env.ts';
 import { getOperationalTimestampLima } from '../../shared/dates/lima.ts';
 import { withReadOnlyClient, withTransaction } from '../../shared/database/transaction.ts';
@@ -552,6 +555,69 @@ export async function pronosticarDemandaService(
     recomendacion: persisted,
     requiereConfirmacionHumana: true,
   };
+}
+
+export async function listarRecomendacionesDemandaService(ctx: AuthContext, params: PaginationParams) {
+  return withReadOnlyClient(async (client) => {
+    const values: unknown[] = [];
+    const where: string[] = [];
+    if (params.status) {
+      values.push(params.status.split(',').map((v) => v.trim()).filter(Boolean));
+      where.push(`r.estado::text = ANY($${values.length}::text[])`);
+    }
+    if (params.search) {
+      values.push(`%${params.search}%`);
+      where.push(`(r.tipo ILIKE $${values.length} OR r.motivo ILIKE $${values.length})`);
+    }
+    const clause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
+    const count = await client.query<{ total: string }>(
+      `SELECT COUNT(*)::text AS total FROM g3_servicios.recomendacion_gestion r ${clause}`, values
+    );
+    values.push(params.pageSize, (params.page - 1) * params.pageSize);
+    const rows = await client.query(
+      `SELECT r.id_recomendacion, r.id_pronostico, r.tipo, r.motivo, r.datos_utilizados,
+              r.fecha_hora_generacion::text AS fecha_hora_generacion, r.estado, r.decision,
+              r.comentario_decision, r.fecha_hora_decision::text AS fecha_hora_decision,
+              p.fecha_desde::text AS fecha_desde, p.fecha_hasta::text AS fecha_hasta,
+              p.tipo_resultado, p.cantidad_estimada::text AS cantidad_estimada,
+              p.id_punto_venta, p.id_item_catalogo, p.id_articulo
+       FROM g3_servicios.recomendacion_gestion r
+       JOIN g3_servicios.pronostico_demanda p ON p.id_pronostico = r.id_pronostico
+       ${clause}
+       ORDER BY r.fecha_hora_generacion DESC, r.id_recomendacion DESC
+       LIMIT $${values.length - 1} OFFSET $${values.length}`,
+      values
+    );
+    return buildPaginatedResponse(rows.rows, Number(count.rows[0]?.total ?? 0), params.page, params.pageSize);
+  }, ctx);
+}
+
+export async function decidirRecomendacionDemandaService(
+  ctx: AuthContext,
+  idRecomendacion: string,
+  decision: 'aceptada' | 'descartada',
+  comentario: string | null
+) {
+  const allowed = ctx.roles.some((role) =>
+    ['ADMIN_SISTEMA', 'SUPER_ADMIN', 'ADMINISTRADOR', 'ADMIN_SERVICIOS'].includes(role.toUpperCase())
+  );
+  if (!allowed) throw new ForbiddenError('Solo un administrador puede decidir una recomendación.', 'M3_AI_ADMIN_REQUIRED');
+  return withTransaction(ctx, async (client) => {
+    const result = await client.query(
+      `UPDATE g3_servicios.recomendacion_gestion
+       SET estado = $2, decision = $2, comentario_decision = $3, fecha_hora_decision = CURRENT_TIMESTAMP
+       WHERE id_recomendacion = $1 AND estado = 'pendiente'
+       RETURNING id_recomendacion, id_pronostico, estado, decision,
+                 comentario_decision, fecha_hora_decision::text AS fecha_hora_decision`,
+      [idRecomendacion, decision, comentario]
+    );
+    if (result.rows[0]) return result.rows[0];
+    const current = await client.query<{ estado: string }>(
+      `SELECT estado FROM g3_servicios.recomendacion_gestion WHERE id_recomendacion = $1`, [idRecomendacion]
+    );
+    if (!current.rows[0]) throw new NotFoundError('Recomendación no encontrada.');
+    throw new ConflictError('La recomendación ya fue decidida y no puede modificarse.', 'M3_AI_DECISION_IMMUTABLE');
+  });
 }
 
 // 6) M4: Evaluación financiera y proyección (sin auto-ejecución contable)

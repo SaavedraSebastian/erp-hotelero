@@ -10,9 +10,19 @@ export interface AuthContext {
   roles: string[];
   permisos: string[];
   canViewFullPII: boolean;
+  sedeId: string;
+  sedes: Array<{
+    id: string;
+    codigo: string;
+    nombre: string;
+    nombreComercial: string;
+    predeterminada: boolean;
+  }>;
 }
 
 export interface EstablishmentConfig {
+  idSede?: string;
+  codigoSede?: string;
   nombreHotel: string;
   nombreComercial: string;
   zonaHoraria: string;

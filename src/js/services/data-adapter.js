@@ -63,13 +63,8 @@ export function getSupabaseClient() {
 
 export async function fetchEstablishmentConfig() {
   try {
-    const res = await fetch('/api/v1/configuracion/establecimiento', {
-      method: 'GET',
-      credentials: 'include',
-    });
-    if (!res.ok) return null;
-    const json = await res.json();
-    return json.data ?? json;
+    const json = await apiV1Request('/configuracion/establecimiento');
+    return json?.data ?? json;
   } catch {
     return null;
   }
