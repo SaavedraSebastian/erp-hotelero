@@ -10,6 +10,15 @@ export async function listCatalogo(req: Request, res: Response, next: NextFuncti
   }
 }
 
+export async function listHistorialPrecios(req: Request, res: Response, next: NextFunction) {
+  try {
+    const params = parsePagination(req.query as Record<string, unknown>);
+    res.json(await service.getHistorialPreciosService(req.authContext!, String(req.params.id), params));
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function actualizarPrecioItem(req: Request, res: Response, next: NextFunction) {
   try {
     const result = await service.actualizarPrecioItemService(
@@ -234,10 +243,61 @@ export async function listKardexGeneral(req: Request, res: Response, next: NextF
   }
 }
 
+export async function listLotes(req: Request, res: Response, next: NextFunction) {
+  try {
+    const params = parsePagination(req.query as Record<string, unknown>);
+    res.json(await service.getLotesService(req.authContext!, params));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function listEnviosExternos(req: Request, res: Response, next: NextFunction) {
+  try {
+    const params = parsePagination(req.query as Record<string, unknown>);
+    res.json(await service.getEnviosExternosService(req.authContext!, params));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function procesarEnviosExternos(req: Request, res: Response, next: NextFunction) {
+  try {
+    res.json({ data: await service.procesarEnviosExternosService(req.authContext!) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function reporteOperacional(req: Request, res: Response, next: NextFunction) {
+  try {
+    res.json({ data: await service.getReporteOperacionalService(
+      req.authContext!,
+      req.query.fromDate ? String(req.query.fromDate) : undefined,
+      req.query.toDate ? String(req.query.toDate) : undefined
+    ) });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function registrarMovimientoInventario(req: Request, res: Response, next: NextFunction) {
   try {
     const result = await service.registrarMovimientoInventarioService(req.authContext!, req.body);
     res.status(201).json({ data: result });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function anularMovimientoInventario(req: Request, res: Response, next: NextFunction) {
+  try {
+    const result = await service.anularMovimientoInventarioService(
+      req.authContext!,
+      String(req.params.id),
+      req.body.motivo
+    );
+    res.json({ data: result });
   } catch (err) {
     next(err);
   }

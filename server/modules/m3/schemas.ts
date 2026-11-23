@@ -137,6 +137,7 @@ export const completarSolicitudServicioBodySchema = z.object({
 
 export const createMovimientoInventarioBodySchema = z.object({
   id_articulo: varcharIdSchema,
+  id_almacen: varcharIdSchema.optional().nullable(),
   id_lote: varcharIdSchema.optional().nullable(),
   tipo_movimiento: z.string().trim().min(2).max(40),
   cantidad: z.coerce.number().positive(),

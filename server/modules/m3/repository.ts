@@ -35,7 +35,11 @@ export async function listCatalogo(client: PoolClient) {
     `SELECT id_categoria, nombre, uso, estado FROM g3_servicios.categoria ORDER BY uso, nombre`
   );
   const unidadesRes = await client.query(
-    `SELECT id_unidad_medida, nombre, simbolo FROM g3_servicios.unidad_medida WHERE estado = 'activo' ORDER BY nombre`
+    `SELECT id_unidad_medida, nombre, simbolo, estado FROM g3_servicios.unidad_medida ORDER BY nombre`
+  );
+  const almacenesRes = await client.query(
+    `SELECT id_almacen, nombre, descripcion, es_principal, estado
+     FROM g3_servicios.almacen ORDER BY es_principal DESC, nombre`
   );
   return {
     puntos_venta: puntosRes.rows,
@@ -43,7 +47,29 @@ export async function listCatalogo(client: PoolClient) {
     items: itemsRes.rows,
     categorias: categoriasRes.rows,
     unidades: unidadesRes.rows,
+    almacenes: almacenesRes.rows,
   };
+}
+
+export async function listHistorialPrecios(client: PoolClient, idItem: string, params: PaginationParams) {
+  const countRes = await client.query<{ total: string }>(
+    `SELECT COUNT(*)::text AS total
+     FROM g3_servicios.historial_precio_item
+     WHERE id_item_catalogo = $1`,
+    [idItem]
+  );
+  const rows = await client.query(
+    `SELECT id_historial, id_item_catalogo,
+            precio_anterior::text AS precio_anterior,
+            precio_nuevo::text AS precio_nuevo,
+            motivo, fecha_hora::text AS fecha_hora, usuario
+     FROM g3_servicios.historial_precio_item
+     WHERE id_item_catalogo = $1
+     ORDER BY fecha_hora DESC, id_historial DESC
+     LIMIT $2 OFFSET $3`,
+    [idItem, params.pageSize, (params.page - 1) * params.pageSize]
+  );
+  return { rows: rows.rows, total: Number(countRes.rows[0]?.total ?? 0) };
 }
 
 export async function listComandas(client: PoolClient, params: PaginationParams) {
@@ -156,6 +182,12 @@ export async function listConsumos(client: PoolClient, params: PaginationParams)
        con.id_cuenta_cobro_externa,
        con.id_paquete_externo,
        con.usuario_responsable,
+       CASE WHEN con.id_estadia_externa IS NULL THEN NULL ELSE (
+         SELECT COALESCE(SUM(c2.importe_total), 0)::text
+         FROM g3_servicios.consumo c2
+         WHERE c2.id_estadia_externa = con.id_estadia_externa
+           AND c2.estado IN ('por confirmar', 'confirmado')
+       ) END AS total_estadia,
        hb.numero AS numero_habitacion,
        (hu.nombres || ' ' || hu.apellidos) AS huesped_nombre,
        COALESCE(
@@ -308,6 +340,70 @@ export async function listKardex(client: PoolClient, idArticulo: string | null, 
     values
   );
   return { rows: dataRes.rows, total: Number(countRes.rows[0]?.total ?? 0) };
+}
+
+export async function listLotes(client: PoolClient, params: PaginationParams) {
+  const values: unknown[] = [];
+  const where: string[] = [];
+  pushDateRange(values, where, 'la.fecha_vencimiento', params.fromDate, params.toDate);
+  pushSearchFilter(values, where, ['la.id_lote', 'aa.id_articulo', 'aa.nombre'], params.search);
+  const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
+  const countRes = await client.query<{ total: string }>(
+    `SELECT COUNT(*)::text AS total
+     FROM g3_servicios.lote_articulo la
+     JOIN g3_servicios.articulo_almacen aa ON aa.id_articulo = la.id_articulo
+     ${whereClause}`,
+    values
+  );
+  values.push(params.pageSize, (params.page - 1) * params.pageSize);
+  const dataRes = await client.query(
+    `SELECT la.id_lote, la.id_articulo, aa.nombre AS articulo,
+            la.id_almacen, al.nombre AS almacen,
+            um.simbolo AS unidad, la.fecha_vencimiento::text AS fecha_vencimiento,
+            la.cantidad_disponible::text AS cantidad_disponible,
+            la.costo_unitario::text AS costo_unitario,
+            la.fecha_creacion::text AS fecha_creacion,
+            CASE
+              WHEN la.cantidad_disponible <= 0 THEN 'agotado'
+              WHEN la.fecha_vencimiento IS NOT NULL AND la.fecha_vencimiento < CURRENT_DATE THEN 'vencido'
+              WHEN la.fecha_vencimiento IS NOT NULL AND la.fecha_vencimiento <= CURRENT_DATE + aa.dias_aviso_vencimiento THEN 'próximo a vencer'
+              ELSE 'vigente'
+            END AS estado
+     FROM g3_servicios.lote_articulo la
+     JOIN g3_servicios.articulo_almacen aa ON aa.id_articulo = la.id_articulo
+     JOIN g3_servicios.unidad_medida um ON um.id_unidad_medida = aa.id_unidad_medida
+     JOIN g3_servicios.almacen al ON al.id_almacen = la.id_almacen
+     ${whereClause}
+     ORDER BY la.fecha_vencimiento ASC NULLS LAST, la.fecha_creacion DESC
+     LIMIT $${values.length - 1} OFFSET $${values.length}`,
+    values
+  );
+  return { rows: dataRes.rows, total: Number(countRes.rows[0]?.total ?? 0) };
+}
+
+export async function listEnviosExternos(client: PoolClient, params: PaginationParams) {
+  const values: unknown[] = [];
+  const where: string[] = [];
+  pushStatusFilter(values, where, 'ee.estado', params.status);
+  pushDateRange(values, where, 'ee.fecha_hora_intento', params.fromDate, params.toDate);
+  pushSearchFilter(values, where, ['ee.destino', 'ee.tipo_envio', 'ee.id_referencia', 'ee.motivo_rechazo'], params.search);
+  const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
+  const countRes = await client.query<{ total: string }>(
+    `SELECT COUNT(*)::text AS total FROM g3_servicios.envio_externo ee ${whereClause}`,
+    values
+  );
+  values.push(params.pageSize, (params.page - 1) * params.pageSize);
+  const rows = await client.query(
+    `SELECT ee.id_envio, ee.destino, ee.tipo_envio, ee.id_referencia,
+            ee.estado, ee.numero_intento, ee.fecha_hora_intento::text AS fecha_hora_intento,
+            ee.motivo_rechazo
+     FROM g3_servicios.envio_externo ee
+     ${whereClause}
+     ORDER BY ee.fecha_hora_intento DESC, ee.id_envio DESC
+     LIMIT $${values.length - 1} OFFSET $${values.length}`,
+    values
+  );
+  return { rows: rows.rows, total: Number(countRes.rows[0]?.total ?? 0) };
 }
 
 export async function listOrdenesCompra(client: PoolClient, params: PaginationParams) {

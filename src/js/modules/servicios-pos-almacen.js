@@ -23,12 +23,15 @@ import inventarioHtml from '../../html/modules/servicios/inventario.html?raw';
 import proveedoresHtml from '../../html/modules/servicios/proveedores.html?raw';
 import recetasHtml from '../../html/modules/servicios/recetas.html?raw';
 import iaDemandaHtml from '../../html/modules/servicios/ia-demanda.html?raw';
+import reportesHtml from '../../html/modules/servicios/reportes.html?raw';
 import { formatCurrency } from '../utils/formatters.js';
+import { addDays } from '../utils/dates.js';
 import { getRoute, navigateToView } from '../core/router.js';
 import { erpStore } from '../core/store.js';
 import { bindPagedContainer } from '../components/paged-view.js';
 import { localPager, resetLocalPager } from '../components/pagination.js';
 import { getPagedList, setActivePagedList } from '../services/paged-list.js';
+import { apiV1Request } from '../services/api-client.js';
 import { mapComandaRows, mapConsumoRows, mapDemandRecommendationRows, mapPurchaseOrderRows } from '../services/erp-mappers.js';
 import { TODAY } from '../data/empty-state.js';
 import {
@@ -56,6 +59,7 @@ const VIEW_HTML = {
   proveedores: proveedoresHtml,
   recetas: recetasHtml,
   ia_demanda: iaDemandaHtml,
+  reportes: reportesHtml,
 };
 
 const M3_TABS = [
@@ -70,6 +74,7 @@ const M3_TABS = [
   { id: 'proveedores', label: 'Proveedores y Compras', subtitle: 'Proveedores, órdenes de compra y recepción de mercadería.' },
   { id: 'recetas', label: 'Recetario', subtitle: 'Ingredientes por plato que se descuentan del stock al vender.' },
   { id: 'ia_demanda', label: 'IA Demanda y Stock', subtitle: 'Recomendaciones de reposición según la ocupación.' },
+  { id: 'reportes', label: 'Reportes Operacionales', subtitle: 'Resultados consolidados de ventas, demanda, mermas e IA.' },
 ];
 
 const m3Ui = {
@@ -148,6 +153,8 @@ export function renderServiciosPOSModule() {
         priceIn.value = initial.price === '' || initial.price == null ? '' : String(initial.price);
         artSel.value = initial.linkedInventoryItemId || '';
         if (editing) for (const el of [posSel, typeSel]) el.disabled = true;
+        setVisible(form, 'history-btn', Boolean(editing));
+        if (editing) getRef(form, 'history-btn').addEventListener('click', () => openPriceHistoryModal(editing));
 
         getRef(form, 'cancel-btn')?.addEventListener('click', close);
         form.addEventListener('submit', async (e) => {
@@ -173,7 +180,7 @@ export function renderServiciosPOSModule() {
     const cat = erpStore.state?.catalogs ?? {};
     const initial = editing
       ? { ...editing }
-      : { name: '', posId: cat.posPoints?.find((p) => p.active)?.id || '', categoryId: cat.menuCategories?.find((c) => c.active)?.id || '', price: '', durationMinutes: undefined };
+      : { name: '', posId: cat.posPoints?.find((p) => p.active)?.id || '', categoryId: cat.menuCategories?.find((c) => c.active)?.id || '', price: '', durationMinutes: undefined, capacity: undefined };
     openModal({
       title: editing ? `Editar Servicio · ${editing.name}` : 'Nuevo Servicio Complementario',
       subtitle: editing ? 'El punto de venta no se modifica. Un precio nuevo queda registrado en el historial de precios.' : undefined,
@@ -184,6 +191,7 @@ export function renderServiciosPOSModule() {
         const catSel = getRef(form, 'category');
         const durIn = getRef(form, 'duration');
         const priceIn = getRef(form, 'price');
+        const capacityIn = getRef(form, 'capacity');
 
         mount(posSel, (cat.posPoints ?? []).filter((p) => p.active || p.id === editing?.posId).map((p) => h('option', { value: p.id }, p.name)));
         mount(catSel, (cat.menuCategories ?? []).filter((c) => c.active || c.id === editing?.categoryId).map((c) => h('option', { value: c.id }, c.name)));
@@ -193,7 +201,10 @@ export function renderServiciosPOSModule() {
         catSel.value = initial.categoryId || '';
         durIn.value = initial.durationMinutes ? String(initial.durationMinutes) : '';
         priceIn.value = initial.price === '' || initial.price == null ? '' : String(initial.price);
+        capacityIn.value = initial.capacity ? String(initial.capacity) : '';
         if (editing) posSel.disabled = true;
+        setVisible(form, 'history-btn', Boolean(editing));
+        if (editing) getRef(form, 'history-btn').addEventListener('click', () => openPriceHistoryModal(editing));
 
         getRef(form, 'cancel-btn')?.addEventListener('click', close);
         form.addEventListener('submit', async (e) => {
@@ -205,11 +216,67 @@ export function renderServiciosPOSModule() {
             posId: posSel.value,
             categoryId: catSel.value,
             durationMinutes: durIn.value ? Number(durIn.value) : undefined,
+            capacity: capacityIn.value ? Number(capacityIn.value) : undefined,
             price: Number(priceIn.value),
           });
           if (res?.ok) close();
         });
         return form;
+      },
+    });
+  }
+
+  function openCatalogItemStatusModal(item) {
+    if (!item.active) {
+      erpStore.setCatalogItemStatus(item.id, true);
+      return;
+    }
+    openModal({
+      title: `Desactivar ${item.name}`,
+      subtitle: 'El historial se conserva, pero el ítem dejará de estar disponible para nuevas ventas o solicitudes.',
+      renderBody: (close) => {
+        const reason = h('textarea', { className: 'input-control', rows: 3, required: true, minlength: 5, placeholder: 'Motivo de desactivación' });
+        const back = h('button', { type: 'button', className: 'btn btn-outline-muted' }, 'Volver');
+        const submit = h('button', { type: 'submit', className: 'btn btn-primary' }, 'Desactivar');
+        const form = h('form', { className: 'stack-md' }, reason, h('div', { className: 'row-wrap justify-end' }, back, submit));
+        back.addEventListener('click', close);
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const result = await erpStore.setCatalogItemStatus(item.id, false, reason.value);
+          if (result?.ok) close();
+        });
+        return form;
+      },
+    });
+  }
+
+  function openPriceHistoryModal(item) {
+    openModal({
+      title: `Historial de precios · ${item.name}`,
+      subtitle: `Precio vigente: ${formatCurrency(item.price)}`,
+      renderBody: (close) => {
+        const list = h('div', { className: 'divide-list' }, h('div', { className: 'p-4 text-xs text-slate-500' }, 'Cargando historial…'));
+        const done = h('button', { type: 'button', className: 'btn btn-outline-muted' }, 'Cerrar');
+        const body = h('div', { className: 'stack-md' }, list, h('div', { className: 'row-wrap justify-end' }, done));
+        done.addEventListener('click', close);
+        apiV1Request(`/m3/catalogo/${encodeURIComponent(item.id)}/precios?page=1&pageSize=100`)
+          .then((response) => {
+            const rows = response?.data ?? [];
+            mount(list, rows.length === 0
+              ? h('div', { className: 'p-4 text-xs text-slate-500' }, 'No existen cambios de precio registrados.')
+              : rows.map((entry) => h('div', { className: 'p-4 row-between gap-3' },
+                  h('div', null,
+                    h('div', { className: 'text-xs font-semibold text-navy' }, `${formatCurrency(Number(entry.precio_anterior))} → ${formatCurrency(Number(entry.precio_nuevo))}`),
+                    h('div', { className: 'text-11 text-slate-500' }, entry.motivo || 'Sin motivo')
+                  ),
+                  h('div', { className: 'text-right text-11 text-slate-500' },
+                    h('div', null, entry.fecha_hora || ''), h('div', null, entry.usuario || '')
+                  )
+                ))
+            );
+          })
+          .catch((error) => mount(list, h('div', { className: 'p-4 text-xs text-danger' }, error?.message || 'No se pudo cargar el historial.')));
+        return body;
       },
     });
   }
@@ -220,9 +287,14 @@ export function renderServiciosPOSModule() {
       subtitle: `Stock actual: ${item.stock} ${item.unit}`,
       renderBody: (close) => {
         const form = cloneModal('modal-kardex');
+        const warehouseSel = getRef(form, 'warehouse');
         const typeSel = getRef(form, 'type');
         const qtyIn = getRef(form, 'qty');
         const refIn = getRef(form, 'ref');
+
+        mount(warehouseSel, (erpStore.state?.catalogs?.warehouses ?? []).filter((warehouse) => warehouse.active).map((warehouse) =>
+          h('option', { value: warehouse.id }, `${warehouse.name}${warehouse.main ? ' · Principal' : ''}`)
+        ));
 
         setText(form, 'qty-label', `Cantidad (${item.unit})`);
         qtyIn.value = '10';
@@ -231,8 +303,55 @@ export function renderServiciosPOSModule() {
         getRef(form, 'cancel-btn')?.addEventListener('click', close);
         form.addEventListener('submit', (e) => {
           e.preventDefault();
-          erpStore.adjustInventory(item.id, typeSel.value, Number(qtyIn.value), refIn.value);
+          erpStore.adjustInventory(item.id, typeSel.value, Number(qtyIn.value), refIn.value, warehouseSel.value);
           close();
+        });
+        return form;
+      },
+    });
+  }
+
+  function openInventoryMovementAnnulModal(movement) {
+    openModal({
+      title: `Anular movimiento ${movement.type}`,
+      subtitle: `${movement.itemName} · ${movement.quantity > 0 ? '+' : ''}${movement.quantity}`,
+      renderBody: (close) => {
+        const reason = h('textarea', { className: 'input-control', rows: 3, required: true, minlength: 3, placeholder: 'Motivo de anulación' });
+        const back = h('button', { type: 'button', className: 'btn btn-outline-muted' }, 'Volver');
+        const submit = h('button', { type: 'submit', className: 'btn btn-danger' }, 'Anular y revertir stock');
+        const form = h('form', { className: 'stack-md' }, reason, h('div', { className: 'row-wrap justify-end' }, back, submit));
+        back.addEventListener('click', close);
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const result = await erpStore.annulInventoryMovement(movement.id, reason.value);
+          if (result?.ok) {
+            getPagedList('m3.inventario.kardex', { path: '/m3/inventario/kardex', pageSize: 10 }).reload();
+            close();
+          }
+        });
+        return form;
+      },
+    });
+  }
+
+  function openInventoryStatusModal(item) {
+    if (!item.active) {
+      erpStore.setInventoryItemStatus(item.id, true);
+      return;
+    }
+    openModal({
+      title: `Desactivar artículo ${item.sku}`,
+      subtitle: 'El historial y el stock se conservan; el artículo dejará de estar disponible para nuevas operaciones.',
+      renderBody: (close) => {
+        const reason = h('textarea', { className: 'input-control', rows: 3, required: true, minlength: 3, placeholder: 'Motivo de desactivación' });
+        const back = h('button', { type: 'button', className: 'btn btn-outline-muted' }, 'Volver');
+        const submit = h('button', { type: 'submit', className: 'btn btn-primary' }, 'Desactivar artículo');
+        const form = h('form', { className: 'stack-md' }, reason, h('div', { className: 'row-wrap justify-end' }, back, submit));
+        back.addEventListener('click', close);
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const result = await erpStore.setInventoryItemStatus(item.id, false, reason.value);
+          if (result?.ok) close();
         });
         return form;
       },
@@ -257,7 +376,7 @@ export function renderServiciosPOSModule() {
         const warnIn = getRef(form, 'warn-days');
 
         mount(catSel, (cat.stockCategories ?? []).filter((c) => c.active || c.id === editingItem?.categoryId).map((c) => h('option', { value: c.id }, c.name)));
-        mount(unitSel, (cat.units ?? []).map((u) => h('option', { value: u.id }, `${u.name} (${u.symbol})`)));
+        mount(unitSel, (cat.units ?? []).filter((u) => u.active || u.id === editingItem?.unitId).map((u) => h('option', { value: u.id }, `${u.name} (${u.symbol})`)));
         if (editingItem) {
           nameIn.value = editingItem.name;
           catSel.value = editingItem.categoryId;
@@ -302,6 +421,7 @@ export function renderServiciosPOSModule() {
   }
 
   function openSupplierModal(editingSupplier = null) {
+    const inventory = erpStore.state?.inventory ?? [];
     openModal({
       title: editingSupplier ? `Editar proveedor ${editingSupplier.name}` : 'Registrar Nuevo Proveedor',
       renderBody: (close) => {
@@ -310,24 +430,64 @@ export function renderServiciosPOSModule() {
         const rucIn = getRef(form, 'ruc');
         const phoneIn = getRef(form, 'phone');
         const emailIn = getRef(form, 'email');
+        const suppliedItems = getRef(form, 'supplied-items');
+        const addSuppliedItem = getRef(form, 'add-supplied-item');
+        const controls = [];
+
+        const addItemControl = (initial = {}) => {
+          const item = h('select', { className: 'select-control' },
+            ...inventory.filter((entry) => entry.active || entry.id === initial.inventoryItemId).map((entry) =>
+              h('option', { value: entry.id }, entry.name)
+            )
+          );
+          if (initial.inventoryItemId) item.value = initial.inventoryItemId;
+          const leadTime = h('input', { type: 'number', min: 0, max: 3650, value: initial.leadTimeDays ?? 1, className: 'input-control font-mono' });
+          const price = h('input', { type: 'number', min: 0, step: 0.01, value: initial.referencePrice ?? 0, className: 'input-control font-mono' });
+          const remove = h('button', { type: 'button', className: 'btn btn-outline-muted btn-xs' }, 'Quitar');
+          const row = h('div', { className: 'card card-pad stack-sm' },
+            h('div', { className: 'grid-2' },
+              h('div', null, h('label', { className: 'field-label' }, 'Artículo'), item),
+              h('div', null, h('label', { className: 'field-label' }, 'Plazo de entrega (días)'), leadTime),
+              h('div', null, h('label', { className: 'field-label' }, 'Precio referencial'), price)
+            ),
+            h('div', { className: 'row-wrap justify-end' }, remove)
+          );
+          const control = { item, leadTime, price, row };
+          controls.push(control);
+          suppliedItems.appendChild(row);
+          remove.addEventListener('click', () => {
+            controls.splice(controls.indexOf(control), 1);
+            row.remove();
+          });
+        };
 
         if (editingSupplier) {
           nameIn.value = editingSupplier.name;
           rucIn.value = editingSupplier.ruc;
           phoneIn.value = editingSupplier.phone;
           emailIn.value = editingSupplier.email;
+          (editingSupplier.suppliedItems ?? []).forEach(addItemControl);
         }
+
+        addSuppliedItem.addEventListener('click', () => addItemControl({}));
 
         getRef(form, 'cancel-btn')?.addEventListener('click', close);
         form.addEventListener('submit', async (e) => {
           e.preventDefault();
           if (!nameIn.value.trim()) return;
+          const items = controls.map((control) => ({
+            inventoryItemId: control.item.value,
+            leadTimeDays: Number(control.leadTime.value),
+            referencePrice: Number(control.price.value),
+          }));
+          if (new Set(items.map((item) => item.inventoryItemId)).size !== items.length) return;
           const res = await erpStore.upsertSupplier({
             id: editingSupplier?.id,
             name: nameIn.value.trim(),
             ruc: rucIn.value.trim(),
             phone: phoneIn.value.trim(),
             email: emailIn.value.trim(),
+            suppliedItems: items,
           });
           if (res?.ok) close(); // si el servidor rechaza (p. ej. RUC duplicado), el formulario queda abierto
         });
@@ -362,12 +522,6 @@ export function renderServiciosPOSModule() {
 
   function openPurchaseOrderModal(prelinkedReq, editingOrder = null) {
     const state = erpStore.state;
-    const defaultItem = editingOrder?.items?.[0]
-      ? state.inventory.find((i) => i.id === editingOrder.items[0].inventoryItemId) || state.inventory[0]
-      : prelinkedReq
-      ? state.inventory.find((i) => i.id === prelinkedReq.inventoryItemId) || state.inventory[0]
-      : state.inventory[0];
-
     openModal({
       title: editingOrder ? `Editar Orden ${editingOrder.code}` : 'Nueva Orden de Compra a Proveedor',
       subtitle: editingOrder
@@ -376,44 +530,82 @@ export function renderServiciosPOSModule() {
         ? `Vinculada a Requisición ${prelinkedReq.code}`
         : 'Al recepcionar incrementa stock y genera egreso en Finanzas.',
       renderBody: (close) => {
-        const form = cloneModal('modal-orden-compra');
-        const supSel = getRef(form, 'supplier');
-        const itemSel = getRef(form, 'item');
-        const qtyIn = getRef(form, 'qty');
-        const costIn = getRef(form, 'unit-cost');
-
+        const supSel = h('select', { className: 'select-control' });
         mount(supSel, state.suppliers.filter((sup) => sup.active || sup.id === editingOrder?.supplierId).map((sup) => h('option', { value: sup.id }, `${sup.name} (${sup.category})`)));
         if (editingOrder?.supplierId) supSel.value = editingOrder.supplierId;
-        mount(
-          itemSel,
-          state.inventory.filter((inv) => inv.active || inv.id === editingOrder?.items?.[0]?.inventoryItemId).map((inv) =>
-            h('option', { value: inv.id, selected: defaultItem?.id === inv.id }, `${inv.name} (Stock: ${inv.stock} ${inv.unit})`)
-          )
+        const delivery = h('input', { type: 'date', required: true, className: 'input-control font-mono' });
+        delivery.value = editingOrder?.deliveryExpected || addDays(TODAY, 3);
+        const linesContainer = h('div', { className: 'stack-sm' });
+        const controls = [];
+        const addLine = (initial = {}) => {
+          const itemSel = h('select', { className: 'select-control' });
+          mount(itemSel, state.inventory.filter((inv) => inv.active || inv.id === initial.inventoryItemId).map((inv) =>
+            h('option', { value: inv.id }, `${inv.name} (Stock: ${inv.stock} ${inv.unit})`)
+          ));
+          const fallback = state.inventory.find((item) => item.id === initial.inventoryItemId) || state.inventory[0];
+          if (fallback) itemSel.value = fallback.id;
+          const quantity = h('input', { type: 'number', min: 0.001, step: 0.001, required: true, value: initial.quantity || 1, className: 'input-control font-mono' });
+          const cost = h('input', { type: 'number', min: 0, step: 0.01, required: true, value: initial.unitCost ?? fallback?.unitCost ?? 0, className: 'input-control font-mono' });
+          const remove = h('button', { type: 'button', className: 'btn btn-outline-muted btn-xs' }, 'Quitar');
+          const row = h('div', { className: 'card card-pad stack-sm' },
+            h('div', { className: 'grid-2' },
+              h('div', null, h('label', { className: 'field-label' }, 'Artículo'), itemSel),
+              h('div', null, h('label', { className: 'field-label' }, 'Cantidad'), quantity),
+              h('div', null, h('label', { className: 'field-label' }, 'Precio referencial'), cost)
+            ),
+            h('div', { className: 'row-wrap justify-end' }, remove)
+          );
+          const control = { itemSel, quantity, cost, row };
+          controls.push(control);
+          linesContainer.appendChild(row);
+          itemSel.addEventListener('change', () => {
+            const item = state.inventory.find((inv) => inv.id === itemSel.value);
+            if (item) cost.value = String(item.unitCost || 0);
+          });
+          remove.addEventListener('click', () => {
+            if (controls.length === 1) return;
+            controls.splice(controls.indexOf(control), 1);
+            row.remove();
+          });
+        };
+        const initialLines = editingOrder?.items?.length
+          ? editingOrder.items
+          : [{
+              inventoryItemId: prelinkedReq?.inventoryItemId || state.inventory[0]?.id,
+              quantity: prelinkedReq?.quantity || 1,
+              unitCost: state.inventory.find((item) => item.id === prelinkedReq?.inventoryItemId)?.unitCost || state.inventory[0]?.unitCost || 0,
+            }];
+        initialLines.forEach(addLine);
+        const add = h('button', { type: 'button', className: 'btn btn-outline btn-sm' }, 'Agregar artículo');
+        const cancel = h('button', { type: 'button', className: 'btn btn-outline-muted' }, 'Cancelar');
+        const submit = h('button', { type: 'submit', className: 'btn btn-primary' }, editingOrder ? 'Guardar orden' : 'Emitir orden');
+        const form = h('form', { className: 'stack-md' },
+          h('div', { className: 'grid-2' },
+            h('div', null, h('label', { className: 'field-label' }, 'Proveedor'), supSel),
+            h('div', null, h('label', { className: 'field-label' }, 'Entrega esperada'), delivery)
+          ),
+          linesContainer,
+          h('div', { className: 'row-between' }, add, h('div', { className: 'row-wrap' }, cancel, submit))
         );
-        if (defaultItem) itemSel.value = defaultItem.id;
-        qtyIn.value = String(editingOrder?.items?.[0]?.quantity ?? (prelinkedReq ? prelinkedReq.quantity : Math.max(10, (defaultItem?.minStock || 10) * 2)));
-        costIn.value = String(editingOrder?.items?.[0]?.unitCost ?? defaultItem?.unitCost ?? 15);
-
-        itemSel.addEventListener('change', () => {
-          const inv = state.inventory.find((i) => i.id === itemSel.value);
-          if (inv) costIn.value = String(inv.unitCost);
-        });
-
-        getRef(form, 'cancel-btn')?.addEventListener('click', close);
+        add.addEventListener('click', () => addLine({}));
+        cancel.addEventListener('click', close);
         form.addEventListener('submit', async (e) => {
           e.preventDefault();
-          const item = state.inventory.find((i) => i.id === itemSel.value);
-          if (!item) return;
+          const items = controls.map((control) => {
+            const item = state.inventory.find((inventoryItem) => inventoryItem.id === control.itemSel.value);
+            return item && {
+              inventoryItemId: item.id,
+              itemName: item.name,
+              quantity: Number(control.quantity.value),
+              unitCost: Number(control.cost.value),
+            };
+          }).filter(Boolean);
+          if (items.length === 0 || new Set(items.map((item) => item.inventoryItemId)).size !== items.length) return;
           const payload = {
             supplierId: supSel.value,
             linkedRequisitionId: prelinkedReq?.id,
-            deliveryExpected: editingOrder?.deliveryExpected,
-            items: [{
-              inventoryItemId: item.id,
-              itemName: item.name,
-              quantity: Number(qtyIn.value),
-              unitCost: Number(costIn.value),
-            }],
+            deliveryExpected: delivery.value,
+            items,
           };
           const result = editingOrder
             ? await erpStore.updatePurchaseOrder(editingOrder.id, payload)
@@ -451,6 +643,34 @@ export function renderServiciosPOSModule() {
             : action === 'anularRecepcion' && receipt
               ? await erpStore.annulPurchaseReceipt(order.id, receipt.id, value)
               : await erpStore.decidePurchaseOrder(order.id, action, value);
+          if (result?.ok) close();
+        });
+        return form;
+      },
+    });
+  }
+
+  function openPurchaseSendModal(order) {
+    openModal({
+      title: `Enviar orden ${order.code}`,
+      subtitle: 'Selecciona el medio utilizado para remitir la orden aprobada al proveedor.',
+      renderBody: (close) => {
+        const medium = h('select', { className: 'select-control' },
+          h('option', { value: 'correo electrónico' }, 'Correo electrónico'),
+          h('option', { value: 'portal de proveedor' }, 'Portal de proveedor'),
+          h('option', { value: 'entrega física' }, 'Entrega física'),
+          h('option', { value: 'mensajería' }, 'Mensajería')
+        );
+        const back = h('button', { type: 'button', className: 'btn btn-outline-muted' }, 'Volver');
+        const submit = h('button', { type: 'submit', className: 'btn btn-primary' }, 'Registrar envío');
+        const form = h('form', { className: 'stack-md' },
+          h('div', null, h('label', { className: 'field-label' }, 'Medio de envío'), medium),
+          h('div', { className: 'row-wrap justify-end' }, back, submit)
+        );
+        back.addEventListener('click', close);
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const result = await erpStore.sendPurchaseOrder(order.id, medium.value);
           if (result?.ok) close();
         });
         return form;
@@ -562,6 +782,16 @@ export function renderServiciosPOSModule() {
         entries: state.tables ?? [],
         label: 'Mesa',
       },
+      unit: {
+        title: 'Gestionar unidades de medida',
+        entries: state.catalogs?.units ?? [],
+        label: 'Unidad',
+      },
+      warehouse: {
+        title: 'Gestionar almacenes',
+        entries: state.catalogs?.warehouses ?? [],
+        label: 'Almacén',
+      },
     };
     const definition = definitions[kind];
     openModal({
@@ -574,10 +804,11 @@ export function renderServiciosPOSModule() {
         );
         const name = h('input', { className: 'input-control', required: true, minlength: kind === 'table' ? 1 : 2, placeholder: `Nombre del ${definition.label.toLowerCase()}` });
         const type = h('input', { className: 'input-control', minlength: 3, placeholder: 'Tipo: restaurante, bar, minibar…' });
+        const symbol = h('input', { className: 'input-control', maxlength: 80, placeholder: 'Símbolo: kg, L, und…' });
         const pos = h('select', { className: 'select-control' },
           ...(state.catalogs?.posPoints ?? []).filter((point) => point.active).map((point) => h('option', { value: point.id }, point.name))
         );
-        const reason = h('input', { className: 'input-control', minlength: 3, placeholder: 'Motivo para desactivar la mesa' });
+        const reason = h('input', { className: 'input-control', minlength: 3, placeholder: `Motivo para desactivar ${definition.label.toLowerCase()}` });
         const statusButton = h('button', { type: 'button', className: 'btn btn-outline-muted hidden' }, 'Desactivar');
         const cancel = h('button', { type: 'button', className: 'btn btn-outline-muted' }, 'Cerrar');
         const save = h('button', { type: 'submit', className: 'btn btn-primary' }, 'Guardar');
@@ -587,6 +818,7 @@ export function renderServiciosPOSModule() {
           const entry = selected();
           name.value = entry?.name || entry?.rawName || '';
           if (kind === 'point') type.value = entry?.type || '';
+          if (kind === 'unit') symbol.value = entry?.symbol || '';
           if (kind === 'table') {
             pos.value = entry?.posId || pos.options[0]?.value || '';
             pos.disabled = Boolean(entry);
@@ -594,7 +826,7 @@ export function renderServiciosPOSModule() {
           const active = kind === 'table' ? entry?.status !== 'Inactiva' : entry?.active !== false;
           statusButton.textContent = active ? 'Desactivar' : 'Activar';
           statusButton.classList.toggle('hidden', !entry);
-          reason.classList.toggle('hidden', kind !== 'table' || !entry || !active);
+          reason.classList.toggle('hidden', ['unit', 'warehouse'].includes(kind) || !entry || !active);
         };
         record.addEventListener('change', sync);
         sync();
@@ -604,7 +836,9 @@ export function renderServiciosPOSModule() {
           h('div', null, h('label', { className: 'field-label' }, 'Nombre'), name),
         ];
         if (kind === 'point') fields.push(h('div', null, h('label', { className: 'field-label' }, 'Tipo'), type));
-        if (kind === 'table') fields.push(h('div', null, h('label', { className: 'field-label' }, 'Punto de venta'), pos), reason);
+        if (kind === 'unit') fields.push(h('div', null, h('label', { className: 'field-label' }, 'Símbolo'), symbol));
+        if (kind === 'table') fields.push(h('div', null, h('label', { className: 'field-label' }, 'Punto de venta'), pos));
+        fields.push(reason);
         const form = h('form', { className: 'stack-md' }, ...fields,
           h('div', { className: 'row-between pt-2' }, statusButton, h('div', { className: 'row-wrap' }, cancel, save))
         );
@@ -616,7 +850,11 @@ export function renderServiciosPOSModule() {
             ? await erpStore.upsertPointOfSale({ id: entry?.id, name: name.value, type: type.value })
             : kind === 'category'
               ? await erpStore.upsertM3Category({ id: entry?.id, name: name.value, use: categoryUse })
-              : await erpStore.upsertTable({ id: entry?.id, name: name.value, posId: pos.value });
+              : kind === 'unit'
+                ? await erpStore.upsertMeasurementUnit({ id: entry?.id, name: name.value, symbol: symbol.value })
+                : kind === 'warehouse'
+                  ? await erpStore.upsertWarehouse({ id: entry?.id, name: name.value })
+                  : await erpStore.upsertTable({ id: entry?.id, name: name.value, posId: pos.value });
           if (result?.ok) close();
         });
         statusButton.addEventListener('click', async () => {
@@ -624,10 +862,14 @@ export function renderServiciosPOSModule() {
           if (!entry) return;
           const active = kind === 'table' ? entry.status !== 'Inactiva' : entry.active !== false;
           const result = kind === 'point'
-            ? await erpStore.setPointOfSaleStatus(entry.id, !active)
+            ? await erpStore.setPointOfSaleStatus(entry.id, !active, reason.value)
             : kind === 'category'
-              ? await erpStore.setM3CategoryStatus(entry.id, !active)
-              : await erpStore.updateTableStatus(entry.id, active ? 'Inactiva' : 'Activa', reason.value);
+              ? await erpStore.setM3CategoryStatus(entry.id, !active, reason.value)
+              : kind === 'unit'
+                ? await erpStore.setMeasurementUnitStatus(entry.id, !active)
+                : kind === 'warehouse'
+                  ? await erpStore.setWarehouseStatus(entry.id, !active)
+                  : await erpStore.updateTableStatus(entry.id, active ? 'Inactiva' : 'Activa', reason.value);
           if (result?.ok) close();
         });
         return form;
@@ -729,6 +971,103 @@ export function renderServiciosPOSModule() {
           if (motivo.value.trim().length < 3) return;
           const result = await erpStore.cancelServiceRequest(request.id, motivo.value.trim());
           if (result?.ok) close();
+        });
+        return form;
+      },
+    });
+  }
+
+  function openServiceRequestEditModal(request) {
+    openModal({
+      title: `Editar solicitud ${request.id}`,
+      subtitle: `${request.service} · Hab. ${request.roomNumber || '—'}`,
+      renderBody: (close) => {
+        const quantity = h('input', {
+          type: 'number', min: 1, step: 1, required: true,
+          value: request.requestedQuantity, className: 'input-control font-mono',
+        });
+        const scheduledAt = h('input', {
+          type: 'datetime-local',
+          value: request.scheduledAt ? String(request.scheduledAt).slice(0, 16).replace(' ', 'T') : '',
+          className: 'input-control',
+        });
+        const back = h('button', { type: 'button', className: 'btn btn-outline-muted' }, 'Volver');
+        const submit = h('button', { type: 'submit', className: 'btn btn-primary' }, 'Guardar cambios');
+        const form = h('form', { className: 'stack-md' },
+          h('div', null, h('label', { className: 'field-label' }, 'Cantidad solicitada'), quantity),
+          h('div', null, h('label', { className: 'field-label' }, 'Fecha prevista'), scheduledAt),
+          h('div', { className: 'row-wrap justify-end pt-2' }, back, submit)
+        );
+        back.addEventListener('click', close);
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const result = await erpStore.updateServiceRequest(request.id, {
+            quantity: Number(quantity.value), scheduledAt: scheduledAt.value,
+          });
+          if (result?.ok) {
+            getPagedList('m3.solicitudes-servicio', { path: '/m3/solicitudes-servicio', pageSize: 10 }).reload();
+            close();
+          }
+        });
+        return form;
+      },
+    });
+  }
+
+  function openQuantityEditor({ title, subtitle, items, onSubmit }) {
+    openModal({
+      title,
+      subtitle,
+      renderBody: (close) => {
+        const controls = items.map((item) => {
+          const quantity = h('input', {
+            type: 'number', min: 0.001, step: 0.001, required: true,
+            value: item.quantity, className: 'input-control font-mono',
+          });
+          const row = h('div', { className: 'row-between gap-3' },
+            h('div', { className: 'min-w-0' },
+              h('div', { className: 'text-xs font-semibold text-navy' }, item.name),
+              h('div', { className: 'text-11 text-slate-500' }, `${formatCurrency(item.unitPrice)} c/u`)
+            ),
+            h('div', { className: 'w-28' }, quantity)
+          );
+          return { item, quantity, row };
+        });
+        const back = h('button', { type: 'button', className: 'btn btn-outline-muted' }, 'Volver');
+        const submit = h('button', { type: 'submit', className: 'btn btn-primary' }, 'Guardar cambios');
+        const form = h('form', { className: 'stack-md' },
+          ...controls.map((control) => control.row),
+          h('div', { className: 'row-wrap justify-end pt-2' }, back, submit)
+        );
+        back.addEventListener('click', close);
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const quantities = Object.fromEntries(controls.map(({ item, quantity }) => [item.detailId || item.id, Number(quantity.value)]));
+          const result = await onSubmit(quantities);
+          if (result?.ok) close();
+        });
+        return form;
+      },
+    });
+  }
+
+  function openComandaCancelModal(order) {
+    openModal({
+      title: `Cancelar comanda ${order.code}`,
+      subtitle: 'La mesa quedará libre y se conservará la trazabilidad de la cancelación.',
+      renderBody: (close) => {
+        const reason = h('textarea', { className: 'input-control', rows: 3, required: true, minlength: 3, placeholder: 'Motivo de cancelación' });
+        const back = h('button', { type: 'button', className: 'btn btn-outline-muted' }, 'Volver');
+        const submit = h('button', { type: 'submit', className: 'btn btn-danger' }, 'Cancelar comanda');
+        const form = h('form', { className: 'stack-md' }, reason, h('div', { className: 'row-wrap justify-end' }, back, submit));
+        back.addEventListener('click', close);
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const result = await erpStore.cancelPOSOrder(order, reason.value);
+          if (result?.ok) {
+            getPagedList('m3.comandas', { path: '/m3/comandas', map: mapComandaRows, pageSize: 10 }).reload();
+            close();
+          }
         });
         return form;
       },
@@ -841,9 +1180,17 @@ export function renderServiciosPOSModule() {
             setText(row, 'cost', hasCost ? formatCurrency(p.cost) : '—');
             setText(row, 'price', formatCurrency(p.price));
             setText(row, 'margin', margin == null ? '—' : `${margin}%`);
+            mountRef(row, 'status', StatusText({ label: p.active ? 'Activo' : 'Inactivo', variant: p.active ? 'success' : 'muted' }));
+            setVisible(row, 'status-btn', canEditCurrentTab);
             if (canEditCurrentTab) {
               row.style.cursor = 'pointer';
               row.addEventListener('click', () => openProductModal(p));
+              const statusButton = getRef(row, 'status-btn');
+              statusButton.textContent = p.active ? 'Desactivar' : 'Activar';
+              statusButton.addEventListener('click', (event) => {
+                event.stopPropagation();
+                openCatalogItemStatusModal(p);
+              });
             }
             return row;
           })
@@ -896,9 +1243,17 @@ export function renderServiciosPOSModule() {
             'meta',
             `${srv.pointOfSale || srv.area || ''}${srv.durationMinutes ? ` · ${srv.durationMinutes} min` : ''}`
           );
+          mountRef(card, 'status', StatusText({ label: srv.active ? 'Activo' : 'Inactivo', variant: srv.active ? 'success' : 'muted' }));
+          setVisible(card, 'status-btn', canEditCurrentTab);
           if (canEditCurrentTab) {
             card.style.cursor = 'pointer';
             card.addEventListener('click', () => openServiceModal(srv));
+            const statusButton = getRef(card, 'status-btn');
+            statusButton.textContent = srv.active ? 'Desactivar' : 'Activar';
+            statusButton.addEventListener('click', (event) => {
+              event.stopPropagation();
+              openCatalogItemStatusModal(srv);
+            });
           }
           return card;
         })
@@ -1050,15 +1405,26 @@ export function renderServiciosPOSModule() {
         const row = clone('fila-historial-consumo');
         setText(row, 'title', `${consumption.code} · ${consumption.source || 'POS'}${consumption.roomNumber ? ` · Hab. ${consumption.roomNumber}` : ''}`);
         setText(row, 'items', consumption.items.map((item) => `${item.quantity}x ${item.name}`).join(', ') || 'Sin detalle');
-        setText(row, 'meta', `${consumption.paymentMode || 'Forma de cobro no indicada'}${consumption.guestName ? ` · ${consumption.guestName}` : ''} · ${consumption.createdAt || ''}`);
+        setText(row, 'meta', `${consumption.paymentMode || 'Forma de cobro no indicada'}${consumption.guestName ? ` · ${consumption.guestName}` : ''} · ${consumption.createdAt || ''}${consumption.stayId ? ` · Total estadía: ${formatCurrency(consumption.stayTotal)}` : ''}`);
         setText(row, 'total', formatCurrency(consumption.total));
         mountRef(row, 'status', StatusText({ label: consumption.status, variant: getStatusVariant(consumption.status) }));
         const pending = consumption.rawStatus === 'por confirmar';
         const confirmed = consumption.rawStatus === 'confirmado';
+        setVisible(row, 'edit-btn', canEditCurrentTab && pending);
         setVisible(row, 'confirm-btn', canEditCurrentTab && pending);
         setVisible(row, 'discard-btn', canEditCurrentTab && pending);
         setVisible(row, 'annul-btn', canEditCurrentTab && confirmed);
         if (canEditCurrentTab && pending) {
+          getRef(row, 'edit-btn').addEventListener('click', () => openQuantityEditor({
+            title: `Editar consumo ${consumption.code}`,
+            subtitle: 'Solo pueden modificarse consumos pendientes de confirmación.',
+            items: consumption.items,
+            onSubmit: async (quantities) => {
+              const result = await erpStore.updateConsumption(consumption, quantities);
+              if (result?.ok) getPagedList('m3.historial-consumos', { path: '/m3/consumos', map: mapConsumoRows, pageSize: 10 }).reload();
+              return result;
+            },
+          }));
           getRef(row, 'confirm-btn').addEventListener('click', () => erpStore.confirmConsumption(consumption.id));
           getRef(row, 'discard-btn').addEventListener('click', () => openConsumptionReasonModal(consumption, 'descartar'));
         }
@@ -1073,12 +1439,48 @@ export function renderServiciosPOSModule() {
         list: getPagedList('m3.historial-consumos', { path: '/m3/consumos', map: mapConsumoRows, pageSize: 10 }),
         filters: {
           searchPlaceholder: 'Buscar consumo, punto de venta, habitación o huésped…',
-          statuses: ['por confirmar', 'confirmado', 'descartado', 'anulado'],
+          statusOptions: [
+            { value: '', label: 'Todos los estados' },
+            ...['por confirmar', 'confirmado', 'descartado', 'anulado'].map((value) => ({ value, label: value })),
+          ],
           dates: true,
         },
         renderBody: renderConsumptionHistory,
         empty: { iconName: 'receipt', title: 'Sin consumos', description: 'Todavía no hay consumos registrados.' },
         noMatch: { iconName: 'search', title: 'Sin consumos coincidentes', description: 'Prueba con otros filtros.' },
+      });
+
+      setVisible(tabBody, 'retry-integrations-btn', canEditCurrentTab);
+      if (canEditCurrentTab) {
+        getRef(tabBody, 'retry-integrations-btn').addEventListener('click', async (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const result = await erpStore.processExternalIntegrations();
+          if (result?.ok) getPagedList('m3.integraciones', { path: '/m3/integraciones/envios', pageSize: 10 }).reload();
+        });
+      }
+      bindPagedContainer({
+        key: 'm3.integraciones',
+        container: getRef(tabBody, 'integrations-list'),
+        list: getPagedList('m3.integraciones', { path: '/m3/integraciones/envios', pageSize: 10 }),
+        filters: {
+          searchPlaceholder: 'Buscar referencia, tipo o destino…',
+          statusOptions: [
+            { value: '', label: 'Todos los estados' },
+            ...['pendiente', 'aceptado', 'sin respuesta', 'rechazado'].map((value) => ({ value, label: value })),
+          ],
+          dates: true,
+        },
+        renderBody: (rows) => rows.map((integration) => {
+          const row = clone('fila-integracion');
+          setText(row, 'title', `${integration.tipo_envio} · ${integration.id_referencia}`);
+          setText(row, 'meta', `${integration.destino} · ${integration.fecha_hora_intento || ''}${integration.motivo_rechazo ? ` · ${integration.motivo_rechazo}` : ''}`);
+          setText(row, 'attempts', `${integration.numero_intento}/4 intentos`);
+          mountRef(row, 'status', StatusText({ label: integration.estado, variant: getStatusVariant(integration.estado) }));
+          return row;
+        }),
+        empty: { iconName: 'check', title: 'Sin envíos externos', description: 'No hay integraciones registradas.' },
+        noMatch: { iconName: 'search', title: 'Sin integraciones coincidentes', description: 'Prueba con otro estado o rango de fechas.' },
       });
     } else if (activeTab === 'restaurante') {
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.restaurante);
@@ -1140,7 +1542,23 @@ export function renderServiciosPOSModule() {
           setText(row, 'total', formatCurrency(ord.total));
           mountRef(row, 'status', StatusText({ label: ord.status, variant: getStatusVariant(ord.status) }));
           const showAction = canEditCurrentTab && !['Entregado', 'Cobrado', 'Cancelada', 'Anulado', 'Descartado'].includes(ord.status);
+          const editable = canEditCurrentTab && ord.rawStatus === 'pendiente';
+          const cancellable = canEditCurrentTab && ['pendiente', 'en preparación', 'lista'].includes(ord.rawStatus);
+          setVisible(row, 'edit-btn', editable);
           setVisible(row, 'action-btn', showAction);
+          setVisible(row, 'cancel-btn', cancellable);
+          if (editable) {
+            getRef(row, 'edit-btn').addEventListener('click', () => openQuantityEditor({
+              title: `Editar comanda ${ord.code}`,
+              subtitle: 'Puedes modificar cantidades mientras la comanda siga pendiente.',
+              items: ord.items,
+              onSubmit: async (quantities) => {
+                const result = await erpStore.updateComandaItems(ord, quantities);
+                if (result?.ok) getPagedList('m3.comandas', { path: '/m3/comandas', map: mapComandaRows, pageSize: 10 }).reload();
+                return result;
+              },
+            }));
+          }
           if (showAction) {
             const btn = getRef(row, 'action-btn');
             btn.textContent = ord.status === 'Preparando' ? 'En camino' : 'Entregar';
@@ -1148,6 +1566,7 @@ export function renderServiciosPOSModule() {
               erpStore.updatePOSOrderStatus(ord.id, ord.status === 'Preparando' ? 'En camino' : 'Entregado')
             );
           }
+          if (cancellable) getRef(row, 'cancel-btn').addEventListener('click', () => openComandaCancelModal(ord));
           return row;
         }));
       bindPagedContainer({
@@ -1374,7 +1793,10 @@ export function renderServiciosPOSModule() {
         }),
         filters: {
           searchPlaceholder: 'Buscar solicitud, servicio, habitación o huésped…',
-          statuses: ['solicitada', 'en atención', 'completada', 'cancelada'],
+          statusOptions: [
+            { value: '', label: 'Todos los estados' },
+            ...['solicitada', 'en atención', 'completada', 'cancelada'].map((value) => ({ value, label: value })),
+          ],
           dates: true,
         },
         renderBody: (rows) => rows.map((request) => {
@@ -1383,11 +1805,14 @@ export function renderServiciosPOSModule() {
           setText(row, 'meta', `Hab. ${request.roomNumber || '—'} · ${request.guestName || 'Huésped'} · Cant. ${request.requestedQuantity}${request.scheduledAt ? ` · ${request.scheduledAt}` : ''}`);
           mountRef(row, 'status', StatusText({ label: request.status, variant: getStatusVariant(request.status) }));
           const canStart = canEditCurrentTab && request.rawStatus === 'solicitada';
+          const canEdit = canEditCurrentTab && request.rawStatus === 'solicitada';
           const canComplete = canEditCurrentTab && request.rawStatus === 'en atención';
           const canCancel = canEditCurrentTab && ['solicitada', 'en atención'].includes(request.rawStatus);
+          setVisible(row, 'edit-btn', canEdit);
           setVisible(row, 'start-btn', canStart);
           setVisible(row, 'complete-btn', canComplete);
           setVisible(row, 'cancel-btn', canCancel);
+          if (canEdit) getRef(row, 'edit-btn').addEventListener('click', () => openServiceRequestEditModal(request));
           if (canStart) getRef(row, 'start-btn').addEventListener('click', () => erpStore.startServiceRequest(request.id));
           if (canComplete) getRef(row, 'complete-btn').addEventListener('click', () => openServiceRequestCompleteModal(request));
           if (canCancel) getRef(row, 'cancel-btn').addEventListener('click', () => openServiceRequestCancelModal(request));
@@ -1486,7 +1911,7 @@ export function renderServiciosPOSModule() {
               if (item.active) getRef(row, 'adjust-btn').addEventListener('click', () => openInventoryMoveModal(item));
               getRef(row, 'edit-btn').addEventListener('click', () => openInventoryCreateModal(item));
               setText(row, 'status-btn', item.active ? 'Desactivar' : 'Activar');
-              getRef(row, 'status-btn').addEventListener('click', () => erpStore.setInventoryItemStatus(item.id, !item.active));
+              getRef(row, 'status-btn').addEventListener('click', () => openInventoryStatusModal(item));
             }
             return row;
           })
@@ -1510,12 +1935,48 @@ export function renderServiciosPOSModule() {
       );
       setVisible(tabBody, 'new-item-btn', canEditCurrentTab);
       setVisible(tabBody, 'manage-categories-btn', canEditCurrentTab);
+      setVisible(tabBody, 'manage-units-btn', canEditCurrentTab);
+      setVisible(tabBody, 'manage-warehouses-btn', canEditCurrentTab);
       if (canEditCurrentTab) {
         mountRef(tabBody, 'new-item-icon', icon('packagePlus', 'w-3.5'));
         getRef(tabBody, 'new-item-btn').addEventListener('click', openInventoryCreateModal);
         getRef(tabBody, 'manage-categories-btn').addEventListener('click', () => openM3ManagerModal('category', 'almacén'));
+        getRef(tabBody, 'manage-units-btn').addEventListener('click', () => openM3ManagerModal('unit'));
+        getRef(tabBody, 'manage-warehouses-btn').addEventListener('click', () => openM3ManagerModal('warehouse'));
       }
       renderInvRows();
+
+      bindPagedContainer({
+        key: 'm3.inventario.lotes',
+        list: getPagedList('m3.inventario.lotes', {
+          path: '/m3/inventario/lotes',
+          pageSize: 10,
+          map: (rows) => rows.map((lot) => ({
+            id: lot.id_lote,
+            inventoryItemId: lot.id_articulo,
+            itemName: lot.articulo,
+            warehouse: lot.almacen,
+            unit: lot.unidad,
+            expiryDate: lot.fecha_vencimiento,
+            quantity: Number(lot.cantidad_disponible || 0),
+            unitCost: Number(lot.costo_unitario || 0),
+            createdAt: lot.fecha_creacion,
+            status: lot.estado,
+          })),
+        }),
+        container: getRef(tabBody, 'lots-list'),
+        filters: { searchPlaceholder: 'Buscar lote, artículo o SKU…', dates: true },
+        renderBody: (rows) => rows.map((lot) => {
+          const row = clone('fila-lote');
+          setText(row, 'title', `${lot.itemName} · Lote ${lot.id}`);
+          setText(row, 'meta', `${lot.warehouse || 'Almacén'} · Ingreso: ${lot.createdAt || '—'} · Vencimiento: ${lot.expiryDate || 'No aplica'} · Costo: ${formatCurrency(lot.unitCost)}`);
+          setText(row, 'stock', `${lot.quantity} ${lot.unit || ''}`);
+          mountRef(row, 'status', StatusText({ label: lot.status, variant: getStatusVariant(lot.status) }));
+          return row;
+        }),
+        empty: { iconName: 'package', title: 'Sin lotes', description: 'No existen lotes registrados en almacén.' },
+        noMatch: { iconName: 'search', title: 'Sin lotes coincidentes', description: 'Prueba con otra búsqueda o rango de fechas.' },
+      });
 
       const kardexList = getPagedList('m3.inventario.kardex', {
         path: '/m3/inventario/kardex',
@@ -1527,13 +1988,15 @@ export function renderServiciosPOSModule() {
           reference: mv.id_origen || mv.id_lote || 'Sin referencia',
           quantity: (mv.signo === 'salida' ? -1 : 1) * Number(mv.cantidad || 0),
           date: mv.fecha_hora,
+          annulled: mv.estado_anulacion === 'anulado',
+          reversal: /^Anulación /i.test(mv.tipo_movimiento || ''),
         })),
       });
       bindPagedContainer({
         key: 'm3.inventario.kardex',
         list: kardexList,
         container: getRef(tabBody, 'kardex-list'),
-        filters: { searchPlaceholder: 'Buscar tipo, motivo o referencia…', showDates: true },
+        filters: { searchPlaceholder: 'Buscar tipo, motivo o referencia…', dates: true },
         renderBody: (rows) => rows.map((mv) => {
           const row = clone('fila-kardex');
           setText(row, 'title', `${mv.type} · ${mv.itemName}`);
@@ -1543,6 +2006,10 @@ export function renderServiciosPOSModule() {
           qtyEl.textContent = numQty > 0 ? `+${numQty}` : String(numQty);
           qtyEl.classList.add(numQty < 0 ? 'text-danger' : 'text-teal');
           setText(row, 'date', mv.date);
+          if (mv.annulled) setText(row, 'ref', `(${mv.reference}) · Anulado`);
+          const canAnnul = canEditCurrentTab && !mv.annulled && !mv.reversal;
+          setVisible(row, 'annul-btn', canAnnul);
+          if (canAnnul) getRef(row, 'annul-btn').addEventListener('click', () => openInventoryMovementAnnulModal(mv));
           return row;
         }),
         empty: { iconName: 'clipboardList', title: 'Sin movimientos', description: 'No hay movimientos de inventario registrados.' },
@@ -1589,7 +2056,7 @@ export function renderServiciosPOSModule() {
             getRef(row, 'cancel-btn').addEventListener('click', () => openPurchaseReasonModal(po, 'cancelar'));
           }
           if (po.rawStatus === 'aprobada' && canEditCurrentTab) {
-            getRef(row, 'send-btn').addEventListener('click', () => erpStore.sendPurchaseOrder(po.id, 'correo'));
+            getRef(row, 'send-btn').addEventListener('click', () => openPurchaseSendModal(po));
           }
           if (showReceive) {
             mountRef(row, 'receive-icon', icon('packageCheck', 'w-3'));
@@ -1683,6 +2150,55 @@ export function renderServiciosPOSModule() {
         })
       );
       mountRef(tabBody, 'footer-slot', recipesPager.footer);
+    } else if (activeTab === 'reportes') {
+      const { root: view, clone } = loadViewTemplate(VIEW_HTML.reportes);
+      tabBody = view;
+      const form = getRef(tabBody, 'report-form');
+      const from = getRef(tabBody, 'from');
+      const to = getRef(tabBody, 'to');
+      from.value = `${TODAY.slice(0, 8)}01`;
+      to.value = TODAY;
+      const empty = (message) => h('div', { className: 'p-4 text-xs text-slate-500' }, message);
+      const reportRows = (rows, mapper, emptyMessage) => rows.length === 0
+        ? [empty(emptyMessage)]
+        : rows.map((entry) => {
+            const values = mapper(entry);
+            const row = clone('report-row');
+            setText(row, 'title', values.title);
+            setText(row, 'meta', values.meta || '');
+            setText(row, 'value', values.value || '');
+            return row;
+          });
+      const loadReport = async () => {
+        if (!from.value || !to.value || to.value < from.value) return;
+        mount(getRef(tabBody, 'summary'), h('div', { className: 'text-xs text-slate-500' }, 'Cargando reporte…'));
+        try {
+          const response = await apiV1Request(`/m3/reportes/operacional?fromDate=${encodeURIComponent(from.value)}&toDate=${encodeURIComponent(to.value)}`);
+          const report = response?.data ?? {};
+          mount(getRef(tabBody, 'summary'),
+            StatTile({ label: 'Ventas confirmadas', value: formatCurrency(Number(report.resumen?.ventas || 0)), tone: 'success' }),
+            StatTile({ label: 'Operaciones', value: Number(report.resumen?.consumos || 0), tone: 'teal' }),
+            StatTile({ label: 'Estadías atendidas', value: Number(report.resumen?.estadias_atendidas || 0) })
+          );
+          mount(getRef(tabBody, 'sales'), ...reportRows(report.ventas ?? [], (entry) => ({
+            title: entry.nombre, meta: `${entry.operaciones} operación(es)`, value: formatCurrency(Number(entry.total || 0)),
+          }), 'No hubo ventas confirmadas en el periodo.'));
+          mount(getRef(tabBody, 'demand'), ...reportRows(report.demanda ?? [], (entry) => ({
+            title: entry.nombre, meta: `${Number(entry.cantidad || 0)} unidades`, value: formatCurrency(Number(entry.importe || 0)),
+          }), 'No existe demanda registrada en el periodo.'));
+          mount(getRef(tabBody, 'waste'), ...reportRows(report.mermas ?? [], (entry) => ({
+            title: entry.articulo, meta: `${entry.tipo_movimiento} · ${Number(entry.cantidad || 0)} unidades`, value: formatCurrency(Number(entry.costo || 0)),
+          }), 'No se registraron mermas ni pérdidas.'));
+          mount(getRef(tabBody, 'recommendations'), ...reportRows(report.recomendaciones ?? [], (entry) => ({
+            title: entry.tipo, meta: entry.estado, value: String(entry.cantidad || 0),
+          }), 'No se generaron recomendaciones en el periodo.'));
+        } catch (error) {
+          mount(getRef(tabBody, 'summary'), h('div', { className: 'text-xs text-danger' }, error?.message || 'No se pudo generar el reporte.'));
+        }
+      };
+      form.addEventListener('submit', (event) => { event.preventDefault(); loadReport(); });
+      getRef(tabBody, 'print-btn').addEventListener('click', () => window.print());
+      loadReport();
     } else if (activeTab === 'ia_demanda') {
       const activeSuppliers = state.suppliers.filter((supplier) => supplier.active);
       const supById = new Map(activeSuppliers.map((s) => [s.id, s]));
@@ -1692,6 +2208,44 @@ export function renderServiciosPOSModule() {
       tabBody = view;
       mountRef(tabBody, 'alert-icon', icon('alertTriangle', 'w-4 text-warning'));
       setText(tabBody, 'title', `Recomendaciones de Reposición basadas en Consumo y Ocupación (${occupancyPct}%)`);
+
+      const forecastForm = getRef(tabBody, 'forecast-form');
+      const forecastFrom = getRef(tabBody, 'forecast-from');
+      const forecastTo = getRef(tabBody, 'forecast-to');
+      const forecastPos = getRef(tabBody, 'forecast-pos');
+      const forecastTarget = getRef(tabBody, 'forecast-target');
+      forecastFrom.value = TODAY;
+      forecastTo.value = addDays(TODAY, 7);
+      mount(forecastPos, (state.catalogs?.posPoints ?? []).filter((point) => point.active).map((point) =>
+        h('option', { value: point.id }, point.name)
+      ));
+      const syncForecastTargets = () => {
+        const items = [...state.products, ...state.services].filter((item) => item.posId === forecastPos.value && item.active !== false);
+        mount(forecastTarget,
+          h('option', { value: '' }, 'Todo el punto de venta'),
+          ...items.map((item) => h('option', { value: `item:${item.id}` }, item.name)),
+          ...state.inventory.filter((item) => item.active).map((item) => h('option', { value: `article:${item.id}` }, `Almacén: ${item.name}`))
+        );
+      };
+      forecastPos.addEventListener('change', syncForecastTargets);
+      syncForecastTargets();
+      setVisible(tabBody, 'forecast-submit', canEditCurrentTab && forecastPos.options.length > 0);
+      if (canEditCurrentTab) {
+        forecastForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const result = await erpStore.forecastDemand({
+            fromDate: forecastFrom.value,
+            toDate: forecastTo.value,
+            posId: forecastPos.value,
+            target: forecastTarget.value,
+          });
+          if (result?.ok) {
+            getPagedList('m3.ia-recomendaciones', {
+              path: '/ai/demanda/recomendaciones', map: mapDemandRecommendationRows, pageSize: 10,
+            }).reload();
+          }
+        });
+      }
 
       const suggestionsPager = localPager('m3.ia-demanda', lowStockItems, renderContent, 10);
       mountRef(
