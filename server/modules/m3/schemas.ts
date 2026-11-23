@@ -62,8 +62,7 @@ export const motivoBodySchema = z.object({
   motivo: motivoSchema,
 });
 
-export const createConsumoBodySchema = z
-  .object({
+const consumoBodyBaseSchema = z.object({
     id_punto_venta: varcharIdSchema,
     forma_cobro: z.enum(['pago directo', 'cargo a la habitación', 'incluido en paquete']),
     id_estadia_externa: varcharIdSchema.optional().nullable(),
@@ -79,7 +78,9 @@ export const createConsumoBodySchema = z
       )
       .min(1)
       .max(50),
-  })
+  });
+
+export const createConsumoBodySchema = consumoBodyBaseSchema
   .refine(
     (d) => d.forma_cobro !== 'cargo a la habitación' || Boolean(d.id_estadia_externa && d.id_cuenta_cobro_externa),
     {
@@ -95,10 +96,25 @@ export const createConsumoBodySchema = z
     }
   );
 
-export const updateConsumoBodySchema = createConsumoBodySchema.omit({
-  id_punto_venta: true,
-  id_estadia_externa: true,
-});
+export const updateConsumoBodySchema = consumoBodyBaseSchema
+  .omit({
+    id_punto_venta: true,
+    id_estadia_externa: true,
+  })
+  .refine(
+    (d) => d.forma_cobro !== 'cargo a la habitación' || Boolean(d.id_cuenta_cobro_externa),
+    {
+      message: 'El cargo a la habitación exige id_cuenta_cobro_externa.',
+      path: ['id_cuenta_cobro_externa'],
+    }
+  )
+  .refine(
+    (d) => d.forma_cobro !== 'incluido en paquete' || Boolean(d.id_paquete_externo),
+    {
+      message: 'Incluido en paquete exige id_paquete_externo.',
+      path: ['id_paquete_externo'],
+    }
+  );
 
 export const createSolicitudServicioBodySchema = z.object({
   id_estadia_externa: varcharIdSchema,
