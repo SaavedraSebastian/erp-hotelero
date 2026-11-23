@@ -24,7 +24,7 @@ export function authHeaders() {
 const ALL_APP_TABS = {
   m1: ['habitaciones', 'disponibilidad', 'reservas', 'tarifas', 'checkin', 'checkout', 'lista_espera', 'ocupacion', 'huespedes', 'ia_tarifas'],
   m2: ['estado_habitaciones', 'limpieza', 'inspeccion', 'personal', 'incidencias', 'mant_preventivo', 'mant_correctivo', 'activos', 'insumos', 'ia_operativa'],
-  m3: ['productos', 'servicios', 'pos', 'restaurante', 'room_service', 'minibar', 'servicios_comp', 'inventario', 'proveedores', 'recetas', 'ia_demanda'],
+  m3: ['productos', 'servicios', 'pos', 'restaurante', 'room_service', 'minibar', 'servicios_comp', 'inventario', 'proveedores', 'recetas', 'ia_demanda', 'reportes'],
   m4: ['folios', 'facturacion', 'pagos', 'cxc', 'caja', 'gastos', 'costos', 'reportes', 'sunat', 'ia_financiera'],
   m5: ['perfil_360', 'segmentacion', 'fidelizacion', 'campanas', 'reclamos', 'solicitudes', 'encuestas', 'resenas', 'portal_ia', 'ia_conversacional'],
   config: ['rbac', 'usuarios', 'iso', 'supabase', 'auditoria'],

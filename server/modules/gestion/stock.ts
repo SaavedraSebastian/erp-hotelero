@@ -11,6 +11,7 @@ export interface MovimientoStock {
   id_origen: string;
   modulo_origen: 'Almacén' | 'Compras' | 'Housekeeping y Mantenimiento';
   costo_unitario?: string | null;
+  id_almacen?: string | null;
   /** Entrada: lote al que se suma (si se omite se crea uno nuevo). Salida: lote del que se descuenta. */
   id_lote?: string | null;
   /** Entrada con lote nuevo: vencimiento. */
@@ -52,6 +53,16 @@ export async function aplicarMovimientoStock(
     );
 
   let saldo = await stockOf();
+  let warehouseId = m.id_almacen ?? null;
+  if (!warehouseId) {
+    const warehouse = await client.query<{ id_almacen: string }>(
+      `SELECT id_almacen FROM g3_servicios.almacen
+       WHERE estado = 'activo'
+       ORDER BY es_principal DESC, nombre ASC LIMIT 1`
+    );
+    warehouseId = warehouse.rows[0]?.id_almacen ?? null;
+  }
+  if (!warehouseId) throw new DomainRuleError('No existe un almacén activo para registrar el movimiento.');
 
   if (m.signo === 'entrada') {
     let costo = m.costo_unitario ?? null;
@@ -74,9 +85,9 @@ export async function aplicarMovimientoStock(
     } else {
       idLote = crypto.randomUUID();
       await client.query(
-        `INSERT INTO g3_servicios.lote_articulo (id_lote, id_articulo, fecha_vencimiento, cantidad_disponible, costo_unitario)
-         VALUES ($1, $2, $3::date, $4, $5::numeric(12,4))`,
-        [idLote, m.id_articulo, m.fecha_vencimiento ?? null, m.cantidad, costo]
+        `INSERT INTO g3_servicios.lote_articulo (id_lote, id_articulo, id_almacen, fecha_vencimiento, cantidad_disponible, costo_unitario)
+         VALUES ($1, $2, $3, $4::date, $5, $6::numeric(12,4))`,
+        [idLote, m.id_articulo, warehouseId, m.fecha_vencimiento ?? null, m.cantidad, costo]
       );
     }
     saldo += m.cantidad;
@@ -88,10 +99,12 @@ export async function aplicarMovimientoStock(
   const lotes = await client.query<{ id_lote: string; cantidad_disponible: string; costo_unitario: string }>(
     `SELECT id_lote, cantidad_disponible::text AS cantidad_disponible, costo_unitario::text AS costo_unitario
      FROM g3_servicios.lote_articulo
-     WHERE id_articulo = $1 AND cantidad_disponible > 0 AND ($2::text IS NULL OR id_lote = $2::text)
+     WHERE id_articulo = $1 AND cantidad_disponible > 0
+       AND ($2::text IS NULL OR id_lote = $2::text)
+       AND ($3::text IS NULL OR id_almacen = $3::text)
      ORDER BY fecha_vencimiento ASC NULLS LAST, fecha_creacion ASC, id_lote ASC
      FOR UPDATE`,
-    [m.id_articulo, m.id_lote ?? null]
+    [m.id_articulo, m.id_lote ?? null, m.id_lote ? null : warehouseId]
   );
   const disponible = lotes.rows.reduce((acc, l) => acc + Number(l.cantidad_disponible), 0);
   if (disponible + 1e-9 < m.cantidad && !m.permitirParcial) {

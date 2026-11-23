@@ -19,17 +19,12 @@ async function registrarEnvioPendiente(
   tipoEnvio: string,
   idReferencia: string
 ) {
-  const existing = await client.query(
-    `SELECT id_envio FROM g3_servicios.envio_externo
-     WHERE destino = $1 AND tipo_envio = $2 AND id_referencia = $3
-     LIMIT 1`,
-    [destino, tipoEnvio, idReferencia]
-  );
-  if (existing.rows[0]) return existing.rows[0];
   const result = await client.query(
     `INSERT INTO g3_servicios.envio_externo (
        id_envio, destino, tipo_envio, id_referencia, estado, numero_intento, fecha_hora_intento
      ) VALUES ($1, $2, $3, $4, 'pendiente', 0, CURRENT_TIMESTAMP)
+     ON CONFLICT (destino, tipo_envio, id_referencia) DO UPDATE
+       SET id_referencia = EXCLUDED.id_referencia
      RETURNING id_envio, estado`,
     [crypto.randomUUID(), destino, tipoEnvio, idReferencia]
   );
@@ -93,6 +88,11 @@ export async function getCatalogoService(ctx: AuthContext) {
   return { data: await withReadOnlyClient((client) => repo.listCatalogo(client), ctx) };
 }
 
+export async function getHistorialPreciosService(ctx: AuthContext, idItem: string, params: PaginationParams) {
+  const { rows, total } = await withReadOnlyClient((client) => repo.listHistorialPrecios(client, idItem, params), ctx);
+  return buildPaginatedResponse(rows, total, params.page, params.pageSize);
+}
+
 export async function actualizarPrecioItemService(
   ctx: AuthContext,
   idItemCatalogo: string,
@@ -101,6 +101,15 @@ export async function actualizarPrecioItemService(
 ) {
   return withTransaction(ctx, async (client) => {
     await setMotivoCambioPrecio(client, motivo);
+    const current = await client.query<{ precio_vigente: string }>(
+      `SELECT precio_vigente::text AS precio_vigente
+       FROM g3_servicios.item_catalogo WHERE id_item_catalogo = $1 FOR UPDATE`,
+      [idItemCatalogo]
+    );
+    if (!current.rows[0]) throw new NotFoundError('Ítem de catálogo no encontrado.');
+    if (Number(current.rows[0].precio_vigente).toFixed(2) === Number(precioNuevo).toFixed(2)) {
+      return { id_item_catalogo: idItemCatalogo, precio_vigente: current.rows[0].precio_vigente };
+    }
     const res = await client.query<{ id_item_catalogo: string; precio_vigente: string }>(
       `UPDATE g3_servicios.item_catalogo
        SET precio_vigente = $2::numeric(12,2)
@@ -108,7 +117,6 @@ export async function actualizarPrecioItemService(
        RETURNING id_item_catalogo, precio_vigente::text AS precio_vigente`,
       [idItemCatalogo, precioNuevo]
     );
-    if (!res.rows[0]) throw new NotFoundError('Ítem de catálogo no encontrado.');
     return res.rows[0];
   });
 }
@@ -905,7 +913,7 @@ export async function confirmarConsumoService(ctx: AuthContext, numeroConsumo: s
     await registrarEnvioPendiente(
       client,
       'Facturación y Finanzas',
-      'Consumo confirmado',
+      'consumo',
       numeroConsumo
     );
 
@@ -960,6 +968,7 @@ export async function descartarOAnularConsumoService(
           costo_unitario: movimiento.costo_unitario,
         });
       }
+      await registrarEnvioPendiente(client, 'Facturación y Finanzas', 'anulación de consumo', numeroConsumo);
     }
     const query =
       accion === 'descartar'
@@ -980,10 +989,257 @@ export async function getKardexService(ctx: AuthContext, idArticulo: string | nu
   return buildPaginatedResponse(rows, total, params.page, params.pageSize);
 }
 
+export async function getLotesService(ctx: AuthContext, params: PaginationParams) {
+  const { rows, total } = await withReadOnlyClient((client) => repo.listLotes(client, params), ctx);
+  return buildPaginatedResponse(rows, total, params.page, params.pageSize);
+}
+
+export async function getEnviosExternosService(ctx: AuthContext, params: PaginationParams) {
+  const { rows, total } = await withReadOnlyClient((client) => repo.listEnviosExternos(client, params), ctx);
+  return buildPaginatedResponse(rows, total, params.page, params.pageSize);
+}
+
+export async function procesarEnviosExternosService(ctx: AuthContext) {
+  if (!ctx.idUsuarioG4) {
+    throw new DomainRuleError('El usuario necesita una identidad operativa en Finanzas para procesar integraciones.');
+  }
+  return withTransaction(ctx, async (client) => {
+    const pending = await client.query<{
+      id_envio: string;
+      tipo_envio: string;
+      id_referencia: string;
+      numero_intento: number;
+    }>(
+      `SELECT id_envio, tipo_envio, id_referencia, numero_intento
+       FROM g3_servicios.envio_externo
+       WHERE estado IN ('pendiente', 'sin respuesta') AND numero_intento < 4
+       ORDER BY fecha_hora_intento ASC
+       LIMIT 20
+       FOR UPDATE SKIP LOCKED`
+    );
+    let accepted = 0;
+    let failed = 0;
+    for (const envio of pending.rows) {
+      await client.query('SAVEPOINT procesar_envio');
+      try {
+        if (envio.tipo_envio === 'consumo') {
+          const source = await client.query<{
+            numero_consumo: string;
+            id_cuenta_cobro_externa: string | null;
+            importe_total: string;
+            forma_cobro: string;
+            punto_venta: string;
+          }>(
+            `SELECT c.numero_consumo, c.id_cuenta_cobro_externa,
+                    c.importe_total::text AS importe_total, c.forma_cobro,
+                    pv.nombre AS punto_venta
+             FROM g3_servicios.consumo c
+             JOIN g3_servicios.punto_venta pv ON pv.id_punto_venta = c.id_punto_venta
+             WHERE c.numero_consumo = $1 AND c.estado = 'confirmado'`,
+            [envio.id_referencia]
+          );
+          const consumption = source.rows[0];
+          if (!consumption) throw new DomainRuleError('El consumo confirmado ya no está disponible.');
+          if (consumption.forma_cobro === 'cargo a la habitación') {
+            if (!consumption.id_cuenta_cobro_externa) throw new DomainRuleError('El consumo no tiene cuenta de cobro externa.');
+            const account = await client.query<{ estado: string }>(
+              `SELECT estado FROM g4_finanzas.cuenta WHERE id_cuenta = $1 FOR UPDATE`,
+              [consumption.id_cuenta_cobro_externa]
+            );
+            if (!account.rows[0] || account.rows[0].estado !== 'ACTIVA') throw new DomainRuleError('La cuenta financiera no existe o está cerrada.');
+            const inserted = await client.query<{ id_consumo: string }>(
+              `INSERT INTO g4_finanzas.consumo
+                 (id_cuenta, id_usuario, numero_consumo_origen, concepto, importe, area)
+               VALUES ($1, $2, $3, $4, $5::numeric(12,2), $6)
+               ON CONFLICT DO NOTHING
+               RETURNING id_consumo`,
+              [consumption.id_cuenta_cobro_externa, ctx.idUsuarioG4, consumption.numero_consumo,
+               `Consumo ${consumption.numero_consumo}`, consumption.importe_total, consumption.punto_venta]
+            );
+            if (inserted.rows[0]) {
+              await client.query(
+                `UPDATE g4_finanzas.cuenta SET saldo_pendiente = saldo_pendiente + $2::numeric(12,2) WHERE id_cuenta = $1`,
+                [consumption.id_cuenta_cobro_externa, consumption.importe_total]
+              );
+              await client.query(
+                `INSERT INTO g4_finanzas.historial_cuenta
+                   (id_cuenta, id_usuario, tipo_movimiento, importe, detalle)
+                 VALUES ($1, $2, 'CONSUMO', $3::numeric(12,2), $4::jsonb)`,
+                [consumption.id_cuenta_cobro_externa, ctx.idUsuarioG4, consumption.importe_total,
+                 JSON.stringify({ numero_consumo: consumption.numero_consumo, area: consumption.punto_venta })]
+              );
+            }
+          }
+        } else if (envio.tipo_envio === 'anulación de consumo') {
+          const financial = await client.query<{ id_consumo: string; id_cuenta: string; importe: string; estado: string }>(
+            `SELECT id_consumo, id_cuenta, importe::text AS importe, estado
+             FROM g4_finanzas.consumo WHERE numero_consumo_origen = $1 FOR UPDATE`,
+            [envio.id_referencia]
+          );
+          const row = financial.rows[0];
+          if (row && row.estado !== 'ANULADO') {
+            await client.query(`UPDATE g4_finanzas.consumo SET estado = 'ANULADO' WHERE id_consumo = $1`, [row.id_consumo]);
+            await client.query(
+              `UPDATE g4_finanzas.cuenta SET saldo_pendiente = GREATEST(0, saldo_pendiente - $2::numeric(12,2)) WHERE id_cuenta = $1`,
+              [row.id_cuenta, row.importe]
+            );
+            await client.query(
+              `INSERT INTO g4_finanzas.historial_cuenta
+                 (id_cuenta, id_usuario, tipo_movimiento, importe, motivo, detalle)
+               VALUES ($1, $2, 'ACTUALIZACION', $3::numeric(12,2), 'Anulación desde M3', $4::jsonb)`,
+              [row.id_cuenta, ctx.idUsuarioG4, row.importe, JSON.stringify({ numero_consumo: envio.id_referencia })]
+            );
+          }
+        } else if (envio.tipo_envio === 'costo de compra') {
+          const receipt = await client.query<{
+            proveedor: string;
+            total: string;
+          }>(
+            `SELECT p.razon_social AS proveedor,
+                    COALESCE(SUM(dr.cantidad_aceptada * dr.costo_unitario), 0)::text AS total
+             FROM g3_servicios.recepcion_compra rc
+             JOIN g3_servicios.orden_compra oc ON oc.numero_orden = rc.numero_orden
+             JOIN g3_servicios.proveedor p ON p.id_proveedor = oc.id_proveedor
+             JOIN g3_servicios.detalle_recepcion dr ON dr.id_recepcion = rc.id_recepcion
+             WHERE rc.id_recepcion = $1 AND rc.estado <> 'anulada'
+             GROUP BY p.razon_social`,
+            [envio.id_referencia]
+          );
+          if (!receipt.rows[0]) throw new DomainRuleError('La recepción de compra no existe o está anulada.');
+          const center = await client.query<{ id_centro_costo: number }>(
+            `SELECT id_centro_costo FROM g4_finanzas.centro_costo
+             WHERE estado = TRUE ORDER BY (LOWER(nombre) LIKE '%almac%') DESC, id_centro_costo LIMIT 1`
+          );
+          if (!center.rows[0]) throw new DomainRuleError('No existe un centro de costo activo para registrar la compra.');
+          const exists = await client.query(`SELECT 1 FROM g4_finanzas.gasto WHERE comprobante_sustento = $1 LIMIT 1`, [envio.id_referencia]);
+          if (!exists.rows[0]) {
+            await client.query(
+              `INSERT INTO g4_finanzas.gasto
+                 (id_usuario, id_centro_costo, categoria, proveedor, concepto, monto, comprobante_sustento, estado)
+               VALUES ($1, $2, 'Compra de almacén', $3, $4, $5::numeric(12,2), $6, 'PENDIENTE')`,
+              [ctx.idUsuarioG4, center.rows[0].id_centro_costo, receipt.rows[0].proveedor,
+               `Recepción de compra ${envio.id_referencia}`, receipt.rows[0].total, envio.id_referencia]
+            );
+          }
+        } else if (envio.tipo_envio === 'anulación de compra') {
+          await client.query(
+            `UPDATE g4_finanzas.gasto
+             SET estado = 'RECHAZADO', id_usuario_aprobador = $2, fecha_aprobacion = CURRENT_TIMESTAMP
+             WHERE comprobante_sustento = $1 AND estado = 'PENDIENTE'`,
+            [envio.id_referencia, ctx.idUsuarioG4]
+          );
+        }
+        await client.query(
+          `UPDATE g3_servicios.envio_externo
+           SET estado = 'aceptado', numero_intento = numero_intento + 1,
+               fecha_hora_intento = CURRENT_TIMESTAMP, motivo_rechazo = NULL
+           WHERE id_envio = $1`,
+          [envio.id_envio]
+        );
+        await client.query('RELEASE SAVEPOINT procesar_envio');
+        accepted += 1;
+      } catch (error) {
+        await client.query('ROLLBACK TO SAVEPOINT procesar_envio');
+        const nextAttempt = Number(envio.numero_intento) + 1;
+        const final = nextAttempt >= 4;
+        const detail = error instanceof Error ? error.message : 'Error de integración sin detalle';
+        await client.query(
+          `UPDATE g3_servicios.envio_externo
+           SET estado = $2, numero_intento = $3, fecha_hora_intento = CURRENT_TIMESTAMP,
+               motivo_rechazo = $4
+           WHERE id_envio = $1`,
+          [envio.id_envio, final ? 'rechazado' : 'sin respuesta', nextAttempt, detail.slice(0, 500)]
+        );
+        await client.query('RELEASE SAVEPOINT procesar_envio');
+        failed += 1;
+      }
+    }
+    return { procesados: pending.rows.length, aceptados: accepted, fallidos: failed };
+  });
+}
+
+export async function getReporteOperacionalService(
+  ctx: AuthContext,
+  fromDate?: string,
+  toDate?: string
+) {
+  return withReadOnlyClient(async (client) => {
+    const dates = await client.query<{ desde: string; hasta: string }>(
+      `SELECT COALESCE($1::date, date_trunc('month', CURRENT_DATE)::date)::text AS desde,
+              COALESCE($2::date, CURRENT_DATE)::text AS hasta`,
+      [fromDate ?? null, toDate ?? null]
+    );
+    const { desde, hasta } = dates.rows[0];
+    const [summary, sales, demand, waste, recommendations] = await Promise.all([
+      client.query(
+        `SELECT COUNT(*)::int AS consumos,
+                COALESCE(SUM(importe_total), 0)::text AS ventas,
+                COUNT(DISTINCT id_estadia_externa)::int AS estadias_atendidas
+         FROM g3_servicios.consumo
+         WHERE estado = 'confirmado' AND fecha_hora_confirmacion::date BETWEEN $1::date AND $2::date`,
+        [desde, hasta]
+      ),
+      client.query(
+        `SELECT pv.id_punto_venta, pv.nombre,
+                COUNT(c.numero_consumo)::int AS operaciones,
+                COALESCE(SUM(c.importe_total), 0)::text AS total
+         FROM g3_servicios.punto_venta pv
+         LEFT JOIN g3_servicios.consumo c ON c.id_punto_venta = pv.id_punto_venta
+           AND c.estado = 'confirmado' AND c.fecha_hora_confirmacion::date BETWEEN $1::date AND $2::date
+         GROUP BY pv.id_punto_venta, pv.nombre
+         ORDER BY SUM(c.importe_total) DESC NULLS LAST, pv.nombre`,
+        [desde, hasta]
+      ),
+      client.query(
+        `SELECT ic.id_item_catalogo, ic.nombre,
+                SUM(dc.cantidad)::text AS cantidad,
+                SUM(dc.importe)::text AS importe
+         FROM g3_servicios.detalle_consumo dc
+         JOIN g3_servicios.consumo c ON c.numero_consumo = dc.numero_consumo
+         JOIN g3_servicios.item_catalogo ic ON ic.id_item_catalogo = dc.id_item_catalogo
+         WHERE c.estado = 'confirmado' AND c.fecha_hora_confirmacion::date BETWEEN $1::date AND $2::date
+         GROUP BY ic.id_item_catalogo, ic.nombre
+         ORDER BY SUM(dc.cantidad) DESC, ic.nombre LIMIT 20`,
+        [desde, hasta]
+      ),
+      client.query(
+        `SELECT mi.tipo_movimiento, aa.nombre AS articulo,
+                SUM(mi.cantidad)::text AS cantidad,
+                SUM(mi.cantidad * COALESCE(mi.costo_unitario, 0))::text AS costo
+         FROM g3_servicios.movimiento_inventario mi
+         JOIN g3_servicios.articulo_almacen aa ON aa.id_articulo = mi.id_articulo
+         WHERE mi.tipo_movimiento IN ('Merma', 'Pérdida de plato')
+           AND mi.fecha_hora::date BETWEEN $1::date AND $2::date
+           AND mi.estado_anulacion IS DISTINCT FROM 'anulado'
+         GROUP BY mi.tipo_movimiento, aa.nombre
+         ORDER BY SUM(mi.cantidad * COALESCE(mi.costo_unitario, 0)) DESC`,
+        [desde, hasta]
+      ),
+      client.query(
+        `SELECT rg.tipo, rg.estado, COUNT(*)::int AS cantidad
+         FROM g3_servicios.recomendacion_gestion rg
+         WHERE rg.fecha_hora_generacion::date BETWEEN $1::date AND $2::date
+         GROUP BY rg.tipo, rg.estado
+         ORDER BY rg.tipo, rg.estado`,
+        [desde, hasta]
+      ),
+    ]);
+    return {
+      periodo: { desde, hasta },
+      resumen: summary.rows[0],
+      ventas: sales.rows,
+      demanda: demand.rows,
+      mermas: waste.rows,
+      recomendaciones: recommendations.rows,
+    };
+  }, ctx);
+}
+
 export async function registrarMovimientoInventarioService(
   ctx: AuthContext,
   input: {
     id_articulo: string;
+    id_almacen?: string | null;
     id_lote?: string | null;
     tipo_movimiento: string;
     cantidad: number;
@@ -996,6 +1252,59 @@ export async function registrarMovimientoInventarioService(
 ) {
   // El stock es la suma de los lotes: el movimiento y los lotes se actualizan juntos (ver gestion/stock.ts).
   return withTransaction(ctx, (client) => aplicarMovimientoStock(client, input));
+}
+
+export async function anularMovimientoInventarioService(
+  ctx: AuthContext,
+  idMovimiento: string,
+  motivo: string
+) {
+  return withTransaction(ctx, async (client) => {
+    const result = await client.query<{
+      id_movimiento: string;
+      id_articulo: string;
+      id_lote: string | null;
+      tipo_movimiento: string;
+      cantidad: string;
+      signo: 'entrada' | 'salida';
+      costo_unitario: string | null;
+      estado_anulacion: string | null;
+    }>(
+      `SELECT id_movimiento, id_articulo, id_lote, tipo_movimiento,
+              cantidad::text AS cantidad, signo, costo_unitario::text AS costo_unitario,
+              estado_anulacion
+       FROM g3_servicios.movimiento_inventario
+       WHERE id_movimiento = $1
+       FOR UPDATE`,
+      [idMovimiento]
+    );
+    const movement = result.rows[0];
+    if (!movement) throw new NotFoundError('Movimiento de inventario no encontrado.');
+    if (movement.estado_anulacion === 'anulado') {
+      throw new ConflictError('El movimiento ya fue anulado.', 'M3_MOVEMENT_ALREADY_ANNULLED');
+    }
+    if (/^Anulación /i.test(movement.tipo_movimiento)) {
+      throw new DomainRuleError('No se puede anular un movimiento de reversión.');
+    }
+    const reversal = await aplicarMovimientoStock(client, {
+      id_articulo: movement.id_articulo,
+      id_lote: movement.id_lote,
+      tipo_movimiento: `Anulación ${movement.tipo_movimiento}`.slice(0, 40),
+      signo: movement.signo === 'entrada' ? 'salida' : 'entrada',
+      cantidad: Number(movement.cantidad),
+      motivo,
+      id_origen: movement.id_movimiento,
+      modulo_origen: 'Almacén',
+      costo_unitario: movement.costo_unitario,
+    });
+    await client.query(
+      `UPDATE g3_servicios.movimiento_inventario
+       SET estado_anulacion = 'anulado'
+       WHERE id_movimiento = $1`,
+      [idMovimiento]
+    );
+    return { id_movimiento: idMovimiento, estado_anulacion: 'anulado', reversion: reversal };
+  });
 }
 
 export async function getOrdenesCompraService(ctx: AuthContext, params: PaginationParams) {
@@ -1308,7 +1617,7 @@ export async function recibirOrdenCompraService(
     await registrarEnvioPendiente(
       client,
       'Facturación y Finanzas',
-      'Costo de recepción',
+      'costo de compra',
       idRecepcion
     );
 
@@ -1378,7 +1687,7 @@ export async function anularRecepcionCompraService(
     await registrarEnvioPendiente(
       client,
       'Facturación y Finanzas',
-      'Anulación de recepción',
+      'anulación de compra',
       idRecepcion
     );
     return { id_recepcion: idRecepcion, numero_orden: numeroOrden, estado: 'anulada', estado_orden: nextOrderState };

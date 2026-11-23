@@ -313,7 +313,13 @@ export function mapExtraCatalogs({ catalogo, catalogosM2 } = {}) {
     stockCategories: (catalogo?.categorias ?? []).filter((c) => c.uso === 'almacén').map((c) => ({
       id: idOf(c.id_categoria), name: c.nombre || '', use: c.uso || '', active: c.estado !== 'inactivo',
     })),
-    units: (catalogo?.unidades ?? []).map((u) => ({ id: idOf(u.id_unidad_medida), name: u.nombre || '', symbol: u.simbolo || '' })),
+    units: (catalogo?.unidades ?? []).map((u) => ({
+      id: idOf(u.id_unidad_medida), name: u.nombre || '', symbol: u.simbolo || '', active: u.estado !== 'inactivo',
+    })),
+    warehouses: (catalogo?.almacenes ?? []).map((warehouse) => ({
+      id: idOf(warehouse.id_almacen), name: warehouse.nombre || '', description: warehouse.descripcion || '',
+      main: Boolean(warehouse.es_principal), active: warehouse.estado === 'activo',
+    })),
     assetTypes: (catalogosM2?.tipos_activo ?? []).map((t) => ({ id: idOf(t.id), name: t.nombre || '' })),
     areas: (catalogosM2?.areas ?? []).map((a) => ({ id: idOf(a.id), name: a.nombre || '' })),
   };
@@ -353,6 +359,7 @@ export function mapM3({
       price: toNumber(it.precio_vigente),
       cost: 0, // sin dato en la API
       available: it.estado === 'activo' && it.punto_venta_estado !== 'inactivo',
+      active: it.estado === 'activo',
       stockControl: it.id_articulo_descuento ? 'Directo' : 'Sin control',
       linkedInventoryItemId: optId(it.id_articulo_descuento),
     }));
@@ -369,6 +376,7 @@ export function mapM3({
       price: toNumber(it.precio_vigente),
       cost: 0,
       durationMinutes: it.duracion_estimada != null ? toNumber(it.duracion_estimada) : undefined,
+      capacity: it.cupo_por_atencion != null ? toNumber(it.cupo_por_atencion) : undefined,
       active: it.estado === 'activo' && it.punto_venta_estado !== 'inactivo',
       description: '',
     }));
@@ -402,6 +410,7 @@ export function mapM3({
       const unitPrice = toNumber(d[priceKey]);
       return {
         id: idOf(d.id_item_catalogo),
+        detailId: idOf(d.id_detalle_comanda || d.id_detalle_consumo),
         name: d.nombre_item || '',
         quantity,
         unitPrice,
@@ -442,6 +451,7 @@ export function mapM3({
       posId: idOf(c.id_punto_venta),
       stayId: idOf(c.id_estadia_externa),
       accountId: idOf(c.id_cuenta_cobro_externa),
+      stayTotal: toNumber(c.total_estadia),
       source: /minibar/i.test(c.punto_venta_nombre || '') ? 'Minibar' : 'Servicios Complementarios',
       roomId: '',
       roomNumber: c.numero_habitacion || '',
@@ -544,6 +554,12 @@ export function mapM3({
           phone: p.telefono || '',
           email: p.correo || '',
           leadTimeDays: toNumber(p.plazo_entrega_dias),
+          suppliedItems: (Array.isArray(p.articulos) ? p.articulos : []).map((item) => ({
+            inventoryItemId: idOf(item.id_articulo),
+            itemName: item.articulo || '',
+            leadTimeDays: toNumber(item.plazo_entrega_dias),
+            referencePrice: toNumber(item.precio_referencia),
+          })),
           rating: null,
           active: p.estado === 'activo',
         }))

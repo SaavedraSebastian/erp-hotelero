@@ -29,6 +29,7 @@
       </div>
       <p class="text-11 text-slate-500">Si el producto se prepara con receta, deja el artículo en &quot;Ninguno&quot; y configura la receta aparte. El costo se calcula con los insumos.</p>
       <div class="row-wrap justify-end pt-2">
+        <button type="button" class="btn btn-outline hidden" data-ref="history-btn">Historial de precios</button>
         <button type="button" class="btn btn-outline-muted" data-ref="cancel-btn">Cancelar</button>
         <button type="submit" class="btn btn-primary">Guardar producto</button>
       </div>
@@ -58,8 +59,13 @@
           <label class="field-label">Tarifa (S/)</label>
           <input type="number" step="0.01" min="0" class="input-control font-mono" required data-ref="price" />
         </div>
+        <div>
+          <label class="field-label">Cupo por atención (opcional)</label>
+          <input type="number" min="1" class="input-control font-mono" placeholder="Ej. 4" data-ref="capacity" />
+        </div>
       </div>
       <div class="row-wrap justify-end pt-2">
+        <button type="button" class="btn btn-outline hidden" data-ref="history-btn">Historial de precios</button>
         <button type="button" class="btn btn-outline-muted" data-ref="cancel-btn">Cancelar</button>
         <button type="submit" class="btn btn-primary">Guardar servicio</button>
       </div>
@@ -70,11 +76,18 @@
     <form class="stack-md">
       <div class="grid-2">
         <div>
+          <label class="field-label">Almacén</label>
+          <select class="select-control" data-ref="warehouse"></select>
+        </div>
+        <div>
           <label class="field-label">Tipo movimiento</label>
           <select class="select-control" data-ref="type">
             <option value="Entrada">Entrada</option>
             <option value="Salida">Salida</option>
-            <option value="Ajuste">Ajuste</option>
+            <option value="Merma">Merma</option>
+            <option value="Pérdida de plato">Pérdida de plato</option>
+            <option value="Conteo físico +">Conteo físico: aumentar stock</option>
+            <option value="Conteo físico -">Conteo físico: disminuir stock</option>
           </select>
         </div>
         <div>
@@ -161,6 +174,8 @@
         </div>
       </div>
       <p class="text-11 text-slate-500">Se requiere al menos un teléfono o un correo de contacto.</p>
+      <div class="stack-sm" data-ref="supplied-items"></div>
+      <button type="button" class="btn btn-outline btn-sm" data-ref="add-supplied-item">Agregar artículo suministrado</button>
       <div class="row-wrap justify-end pt-2">
         <button type="button" class="btn btn-outline-muted" data-ref="cancel-btn">Cancelar</button>
         <button type="submit" class="btn btn-primary">Guardar proveedor</button>

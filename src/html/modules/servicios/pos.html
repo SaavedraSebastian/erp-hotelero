@@ -72,6 +72,14 @@
   <div class="divide-list" data-ref="consumption-history"></div>
 </details>
 
+<details class="card mt-4">
+  <summary class="card-header cursor-pointer">
+    <div><h3 class="card-title">Integraciones externas</h3><p class="text-11 text-slate-500">Envíos idempotentes hacia Facturación y Finanzas.</p></div>
+    <button type="button" class="btn btn-outline btn-sm hidden" data-ref="retry-integrations-btn">Procesar pendientes</button>
+  </summary>
+  <div class="divide-list" data-ref="integrations-list"></div>
+</details>
+
 <template data-tpl="pos-producto-btn">
   <button type="button" class="stat-tile is-clickable">
     <div class="font-mono text-11 text-teal" data-ref="meta"></div>
@@ -111,9 +119,17 @@
     <div class="row-wrap justify-end shrink-0">
       <span class="font-mono font-semibold text-navy" data-ref="total"></span>
       <span data-ref="status"></span>
+      <button type="button" class="btn btn-outline btn-sm hidden" data-ref="edit-btn">Editar</button>
       <button type="button" class="btn btn-teal btn-sm hidden" data-ref="confirm-btn">Confirmar</button>
       <button type="button" class="btn btn-outline-muted btn-sm hidden" data-ref="discard-btn">Descartar</button>
       <button type="button" class="btn btn-outline-muted btn-sm hidden" data-ref="annul-btn">Anular</button>
     </div>
+  </div>
+</template>
+
+<template data-tpl="fila-integracion">
+  <div class="p-4 row-between gap-3">
+    <div><div class="text-xs font-semibold text-navy" data-ref="title"></div><div class="text-11 text-slate-500" data-ref="meta"></div></div>
+    <div class="row-wrap justify-end"><span class="font-mono text-11" data-ref="attempts"></span><span data-ref="status"></span></div>
   </div>
 </template>

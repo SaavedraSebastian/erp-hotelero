@@ -1,4 +1,20 @@
 <div class="stack-md">
+  <form class="card card-pad stack-md" data-ref="forecast-form">
+    <div class="row-between">
+      <div>
+        <h3 class="card-title">Generar pronóstico de demanda</h3>
+        <p class="text-11 text-slate-500">Define el periodo, punto de venta y elemento a analizar.</p>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div><label class="field-label">Desde</label><input type="date" required class="input-control" data-ref="forecast-from" /></div>
+      <div><label class="field-label">Hasta</label><input type="date" required class="input-control" data-ref="forecast-to" /></div>
+      <div><label class="field-label">Punto de venta</label><select required class="select-control" data-ref="forecast-pos"></select></div>
+      <div><label class="field-label">Elemento específico</label><select class="select-control" data-ref="forecast-target"></select></div>
+    </div>
+    <div class="row-wrap justify-end"><button type="submit" class="btn btn-primary hidden" data-ref="forecast-submit">Generar pronóstico</button></div>
+  </form>
+
   <div class="card">
     <div class="card-header">
       <h3 class="card-title row-gap-sm">
