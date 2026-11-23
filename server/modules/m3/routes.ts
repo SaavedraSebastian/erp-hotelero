@@ -32,6 +32,13 @@ export function createM3Router(): Router {
   router.use(authenticateJwt);
 
   router.get('/catalogo', requirePermission(PERMISSIONS.M3_CATALOGO_CONSULTAR), ctrl.listCatalogo);
+  router.get(
+    '/catalogo/:id/precios',
+    requirePermission(PERMISSIONS.M3_CATALOGO_CONSULTAR),
+    validateParams(m3IdParamSchema),
+    validateQuery(paginationQuerySchema),
+    ctrl.listHistorialPrecios
+  );
   router.post(
     '/catalogo/:id/precio',
     requirePermission(PERMISSIONS.M3_PRECIO_MODIFICAR),
@@ -185,6 +192,29 @@ export function createM3Router(): Router {
     ctrl.listKardexGeneral
   );
   router.get(
+    '/inventario/lotes',
+    requirePermission(PERMISSIONS.M3_INVENTARIO_CONSULTAR),
+    validateQuery(paginationQuerySchema),
+    ctrl.listLotes
+  );
+  router.get(
+    '/integraciones/envios',
+    requirePermission(PERMISSIONS.M3_CONSUMO_CONSULTAR),
+    validateQuery(paginationQuerySchema),
+    ctrl.listEnviosExternos
+  );
+  router.post(
+    '/integraciones/procesar',
+    requirePermission(PERMISSIONS.M3_CATALOGO_ADMINISTRAR),
+    ctrl.procesarEnviosExternos
+  );
+  router.get(
+    '/reportes/operacional',
+    requirePermission(PERMISSIONS.M3_CONSUMO_CONSULTAR),
+    validateQuery(paginationQuerySchema),
+    ctrl.reporteOperacional
+  );
+  router.get(
     '/inventario/:id/kardex',
     requirePermission(PERMISSIONS.M3_INVENTARIO_CONSULTAR),
     validateParams(m3IdParamSchema),
@@ -196,6 +226,13 @@ export function createM3Router(): Router {
     requirePermission(PERMISSIONS.M3_INVENTARIO_MOVER),
     validateBody(createMovimientoInventarioBodySchema),
     ctrl.registrarMovimientoInventario
+  );
+  router.post(
+    '/inventario/movimientos/:id/anular',
+    requirePermission(PERMISSIONS.M3_INVENTARIO_MOVER),
+    validateParams(m3IdParamSchema),
+    validateBody(motivoBodySchema),
+    ctrl.anularMovimientoInventario
   );
 
   router.get(

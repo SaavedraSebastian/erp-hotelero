@@ -70,6 +70,7 @@ const NAV_ITEMS = [
       { label: 'Proveedores y Compras', tab: 'proveedores' },
       { label: 'Recetario e Insumos', tab: 'recetas' },
       { label: 'IA Demanda y Stock', tab: 'ia_demanda' },
+      { label: 'Reportes Operacionales', tab: 'reportes' },
     ],
   },
   {

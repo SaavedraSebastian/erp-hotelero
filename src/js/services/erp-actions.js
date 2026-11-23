@@ -139,6 +139,7 @@ export function createWriteActions(ctx) {
     if (nombre.length < 3) return fail('Nombre requerido', 'El nombre debe tener al menos 3 caracteres.');
     if (!(price >= 0)) return fail('Precio inválido', 'El precio debe ser mayor o igual a cero.');
     const duration = p.durationMinutes ? Number(p.durationMinutes) : null;
+    const capacity = p.capacity ? Number(p.capacity) : null;
     const existing = p.id ? [...(s().products ?? []), ...(s().services ?? [])].find((x) => x.id === p.id) : null;
 
     if (existing) {
@@ -149,7 +150,7 @@ export function createWriteActions(ctx) {
             nombre,
             id_categoria: p.categoryId || undefined,
             id_articulo_descuento: p.articleId || null,
-            ...(label === 'Servicio' ? { duracion_estimada: duration } : {}),
+            ...(label === 'Servicio' ? { duracion_estimada: duration, cupo_por_atencion: capacity } : {}),
           });
           if (Math.abs(price - existing.price) > 0.0001) {
             await post(`/m3/catalogo/${encodeURIComponent(existing.id)}/precio`, {
@@ -176,6 +177,7 @@ export function createWriteActions(ctx) {
           precio_vigente: money(price),
           id_articulo_descuento: p.articleId || null,
           duracion_estimada: duration,
+          cupo_por_atencion: capacity,
         }),
       { refreshKeys: ['catalogo'], detail: `${nombre} · S/ ${money(price)}` }
     );
@@ -644,13 +646,15 @@ export function createWriteActions(ctx) {
     // =========================================================================================
     // M3 · Servicios, POS y Almacén
     // =========================================================================================
-    async adjustInventory(inventoryItemId, type, quantity, reference) {
+    async adjustInventory(inventoryItemId, type, quantity, reference, warehouseId) {
       const qty = Number(quantity);
       if (!(qty > 0)) return fail('Cantidad inválida', 'La cantidad debe ser mayor a cero.');
       const tipo = String(type ?? '');
-      const signo = tipo === 'Entrada' ? 'entrada' : tipo === 'Salida' ? 'salida' : null;
+      const signo = ['Entrada', 'Conteo físico +'].includes(tipo) ? 'entrada'
+        : ['Salida', 'Merma', 'Pérdida de plato', 'Conteo físico -'].includes(tipo) ? 'salida'
+        : null;
       if (!signo) {
-        return unsupported('Ajuste de inventario', 'indica si es una Entrada o una Salida; el tipo "Ajuste" no define el sentido del movimiento.');
+        return unsupported('Ajuste de inventario', 'selecciona un tipo de movimiento válido.');
       }
       const motivo = String(reference ?? '').trim();
       if (motivo.length < 5) return fail('Motivo requerido', 'Ingresa una referencia de al menos 5 caracteres.');
@@ -659,6 +663,7 @@ export function createWriteActions(ctx) {
         () =>
           post('/m3/inventario/movimientos', {
             id_articulo: inventoryItemId,
+            id_almacen: warehouseId || undefined,
             tipo_movimiento: tipo,
             cantidad: qty,
             signo,
@@ -669,9 +674,22 @@ export function createWriteActions(ctx) {
       );
     },
 
+    async annulInventoryMovement(movementId, reason) {
+      const motivo = String(reason ?? '').trim();
+      if (motivo.length < 3) return fail('Motivo requerido', 'Indica un motivo de al menos 3 caracteres.');
+      return run(
+        'Movimiento de inventario anulado',
+        () => post(`/m3/inventario/movimientos/${encodeURIComponent(movementId)}/anular`, { motivo }),
+        { refreshKeys: ['inventario'], detail: movementId }
+      );
+    },
+
     async createPurchaseOrder(input) {
       if (!input.supplierId) return fail('Proveedor requerido', 'Selecciona un proveedor.');
-      const delivery = addDays(TODAY, 3);
+      const delivery = input.deliveryExpected || addDays(TODAY, 3);
+      if (!input.items?.length || input.items.some((item) => !(Number(item.quantity) > 0) || Number(item.unitCost) < 0)) {
+        return fail('Detalle inválido', 'Agrega al menos un artículo con cantidad y precio referencial válidos.');
+      }
       return run(
         'Orden de compra creada',
         () =>
@@ -760,6 +778,22 @@ export function createWriteActions(ctx) {
       return run('Solicitud puesta en atención', () => post(`/m3/solicitudes-servicio/${encodeURIComponent(id)}/iniciar`));
     },
 
+    async updateServiceRequest(id, input) {
+      const quantity = Number(input.quantity);
+      if (!(quantity > 0)) return fail('Cantidad inválida', 'La cantidad debe ser mayor a cero.');
+      const scheduled = input.scheduledAt
+        ? `${input.scheduledAt.length === 16 ? `${input.scheduledAt}:00` : input.scheduledAt}-05:00`
+        : null;
+      return run(
+        'Solicitud de servicio actualizada',
+        () => put(`/m3/solicitudes-servicio/${encodeURIComponent(id)}`, {
+          cantidad_solicitada: quantity,
+          fecha_hora_prevista: scheduled,
+        }),
+        { detail: id }
+      );
+    },
+
     async cancelServiceRequest(id, motivo) {
       return run(
         'Solicitud cancelada',
@@ -791,6 +825,25 @@ export function createWriteActions(ctx) {
         'Consumo confirmado',
         () => post(`/m3/consumos/${encodeURIComponent(id)}/confirmar`),
         { refreshKeys: ['inventario'], detail: id }
+      );
+    },
+
+    async updateConsumption(consumption, quantities) {
+      const items = consumption.items.map((item) => ({
+        id_item_catalogo: item.id,
+        cantidad: Number(quantities[item.detailId || item.id]),
+      }));
+      if (items.length === 0 || items.some((item) => !(item.cantidad > 0))) {
+        return fail('Cantidad inválida', 'Todas las cantidades deben ser mayores a cero.');
+      }
+      return run(
+        'Consumo pendiente actualizado',
+        () => put(`/m3/consumos/${encodeURIComponent(consumption.id)}`, {
+          forma_cobro: consumption.paymentMode,
+          id_cuenta_cobro_externa: consumption.accountId || undefined,
+          items,
+        }),
+        { detail: consumption.id }
       );
     },
 
@@ -950,6 +1003,41 @@ export function createWriteActions(ctx) {
         }
       );
     },
+
+    async updateComandaItems(order, quantities) {
+      if (order.rawStatus !== 'pendiente') {
+        return fail('Comanda no editable', 'Solo se pueden modificar comandas pendientes.');
+      }
+      const items = order.items.map((item) => ({
+        detailId: item.detailId,
+        quantity: Number(quantities[item.detailId]),
+      }));
+      if (items.length === 0 || items.some((item) => !item.detailId || !(item.quantity > 0))) {
+        return fail('Cantidad inválida', 'Todas las cantidades deben ser mayores a cero.');
+      }
+      return run(
+        'Comanda actualizada',
+        async () => {
+          for (const item of items) {
+            await put(
+              `/m3/comandas/${encodeURIComponent(order.id)}/items/${encodeURIComponent(item.detailId)}`,
+              { cantidad: item.quantity }
+            );
+          }
+        },
+        { refreshKeys: ['comandas'], detail: order.code }
+      );
+    },
+
+    async cancelPOSOrder(order, reason) {
+      const motivo = String(reason ?? '').trim();
+      if (motivo.length < 3) return fail('Motivo requerido', 'Indica un motivo de al menos 3 caracteres.');
+      return run(
+        'Comanda cancelada',
+        () => post(`/m3/comandas/${encodeURIComponent(order.id)}/cancelar`, { motivo }),
+        { refreshKeys: ['comandas'], detail: `${order.code} · ${motivo}` }
+      );
+    },
     /** Activa o desactiva una mesa. Desactivar exige un motivo y la mesa no puede tener comandas abiertas. */
     async updateTableStatus(tableId, status, reason) {
       const table = (s().tables ?? []).find((t) => t.id === tableId);
@@ -987,10 +1075,14 @@ export function createWriteActions(ctx) {
         { refreshKeys: ['catalogo'], detail: nombre }
       );
     },
-    async setPointOfSaleStatus(pointId, active) {
+    async setPointOfSaleStatus(pointId, active, reason = '') {
+      const motivo = String(reason ?? '').trim();
+      if (!active && motivo.length < 3) return fail('Motivo requerido', 'Indica por qué se desactiva el punto de venta.');
       return run(
         active ? 'Punto de venta activado' : 'Punto de venta desactivado',
-        () => put(`/m3/puntos-venta/${encodeURIComponent(pointId)}`, { estado: active ? 'activo' : 'inactivo' }),
+        () => put(`/m3/puntos-venta/${encodeURIComponent(pointId)}`, {
+          estado: active ? 'activo' : 'inactivo', motivo_desactivacion: active ? null : motivo,
+        }),
         { refreshKeys: ['catalogo'], detail: pointId }
       );
     },
@@ -1005,11 +1097,52 @@ export function createWriteActions(ctx) {
         { refreshKeys: ['catalogo'], detail: nombre }
       );
     },
-    async setM3CategoryStatus(categoryId, active) {
+    async setM3CategoryStatus(categoryId, active, reason = '') {
+      const motivo = String(reason ?? '').trim();
+      if (!active && motivo.length < 3) return fail('Motivo requerido', 'Indica por qué se desactiva la categoría.');
       return run(
         active ? 'Categoría activada' : 'Categoría desactivada',
-        () => put(`/m3/categorias/${encodeURIComponent(categoryId)}`, { estado: active ? 'activo' : 'inactivo' }),
+        () => put(`/m3/categorias/${encodeURIComponent(categoryId)}`, {
+          estado: active ? 'activo' : 'inactivo', motivo_desactivacion: active ? null : motivo,
+        }),
         { refreshKeys: ['catalogo'], detail: categoryId }
+      );
+    },
+    async upsertMeasurementUnit(unit) {
+      const name = String(unit.name ?? '').trim();
+      const symbol = String(unit.symbol ?? '').trim();
+      if (name.length < 2 || !symbol) return fail('Datos incompletos', 'Indica el nombre y el símbolo de la unidad.');
+      return run(
+        unit.id ? 'Unidad actualizada' : 'Unidad creada',
+        () => unit.id
+          ? put(`/m3/unidades-medida/${encodeURIComponent(unit.id)}`, { nombre: name, simbolo: symbol })
+          : post('/m3/unidades-medida', { nombre: name, simbolo: symbol }),
+        { refreshKeys: ['catalogo'], detail: `${name} (${symbol})` }
+      );
+    },
+    async setMeasurementUnitStatus(unitId, active) {
+      return run(
+        active ? 'Unidad activada' : 'Unidad desactivada',
+        () => put(`/m3/unidades-medida/${encodeURIComponent(unitId)}`, { estado: active ? 'activo' : 'inactivo' }),
+        { refreshKeys: ['catalogo'], detail: unitId }
+      );
+    },
+    async upsertWarehouse(warehouse) {
+      const name = String(warehouse.name ?? '').trim();
+      if (name.length < 2) return fail('Nombre requerido', 'El nombre debe tener al menos 2 caracteres.');
+      return run(
+        warehouse.id ? 'Almacén actualizado' : 'Almacén creado',
+        () => warehouse.id
+          ? put(`/m3/almacenes/${encodeURIComponent(warehouse.id)}`, { nombre: name })
+          : post('/m3/almacenes', { nombre: name }),
+        { refreshKeys: ['catalogo'], detail: name }
+      );
+    },
+    async setWarehouseStatus(warehouseId, active) {
+      return run(
+        active ? 'Almacén activado' : 'Almacén desactivado',
+        () => put(`/m3/almacenes/${encodeURIComponent(warehouseId)}`, { estado: active ? 'activo' : 'inactivo' }),
+        { refreshKeys: ['catalogo'], detail: warehouseId }
       );
     },
     /** Productos de carta (plato / bebida / producto). El costo no se guarda: se calcula con la receta o el artículo ligado. */
@@ -1018,6 +1151,19 @@ export function createWriteActions(ctx) {
     },
     async upsertService(p) {
       return saveCatalogItem({ ...p, itemType: 'servicio' }, 'Servicio');
+    },
+
+    async setCatalogItemStatus(itemId, active, reason = '') {
+      const motivo = String(reason ?? '').trim();
+      if (!active && motivo.length < 5) return fail('Motivo requerido', 'Indica un motivo de al menos 5 caracteres.');
+      return run(
+        active ? 'Ítem de catálogo activado' : 'Ítem de catálogo desactivado',
+        () => put(`/m3/catalogo/${encodeURIComponent(itemId)}`, {
+          estado: active ? 'activo' : 'inactivo',
+          motivo_desactivacion: active ? null : motivo,
+        }),
+        { refreshKeys: ['catalogo'], detail: itemId }
+      );
     },
 
     /** Guarda una nueva versión vigente de la receta; la anterior queda en el historial. */
@@ -1053,6 +1199,33 @@ export function createWriteActions(ctx) {
       );
     },
 
+    async forecastDemand(input) {
+      if (!input.posId || !input.fromDate || !input.toDate) {
+        return fail('Datos incompletos', 'Indica el punto de venta y el periodo del pronóstico.');
+      }
+      if (input.toDate < input.fromDate) return fail('Periodo inválido', 'La fecha final no puede ser anterior a la inicial.');
+      const [kind, targetId] = String(input.target || '').split(':');
+      return run(
+        'Pronóstico de demanda generado',
+        () => post('/ai/demanda/pronosticar', {
+          idPuntoVenta: input.posId,
+          idItemCatalogo: kind === 'item' ? targetId : null,
+          idArticulo: kind === 'article' ? targetId : null,
+          fechaDesde: input.fromDate,
+          fechaHasta: input.toDate,
+        }),
+        { detail: `${input.fromDate} a ${input.toDate}` }
+      );
+    },
+
+    async processExternalIntegrations() {
+      return run(
+        'Integraciones externas procesadas',
+        () => post('/m3/integraciones/procesar'),
+        { detail: 'Se procesaron hasta 20 envíos pendientes o sin respuesta.' }
+      );
+    },
+
     /** Alta de artículo de almacén; con stock inicial se crea su primer lote y su movimiento. */
     async upsertInventoryItem(i) {
       const nombre = String(i.name ?? '').trim();
@@ -1081,10 +1254,14 @@ export function createWriteActions(ctx) {
         { refreshKeys: ['inventario'], detail: `${nombre}${stock > 0 ? ` · stock inicial ${stock}` : ''}` }
       );
     },
-    async setInventoryItemStatus(itemId, active) {
+    async setInventoryItemStatus(itemId, active, reason = '') {
+      const motivo = String(reason ?? '').trim();
+      if (!active && motivo.length < 3) return fail('Motivo requerido', 'Indica por qué se desactiva el artículo.');
       return run(
         active ? 'Artículo activado' : 'Artículo desactivado',
-        () => put(`/m3/articulos/${encodeURIComponent(itemId)}`, { estado: active ? 'activo' : 'inactivo' }),
+        () => put(`/m3/articulos/${encodeURIComponent(itemId)}`, {
+          estado: active ? 'activo' : 'inactivo', motivo_desactivacion: active ? null : motivo,
+        }),
         { refreshKeys: ['inventario'], detail: itemId }
       );
     },
@@ -1097,9 +1274,21 @@ export function createWriteActions(ctx) {
       if (!telefono && !correo) return fail('Contacto requerido', 'Indica al menos un teléfono o un correo.');
       return run(
         sup.id ? 'Proveedor actualizado' : 'Proveedor registrado',
-        () => (sup.id ? put : post)(sup.id ? `/m3/proveedores/${encodeURIComponent(sup.id)}` : '/m3/proveedores', {
-          ruc, razon_social: String(sup.name ?? '').trim(), telefono: telefono || null, correo: correo || null,
-        }),
+        async () => {
+          const response = await (sup.id ? put : post)(sup.id ? `/m3/proveedores/${encodeURIComponent(sup.id)}` : '/m3/proveedores', {
+            ruc, razon_social: String(sup.name ?? '').trim(), telefono: telefono || null, correo: correo || null,
+          });
+          const providerId = sup.id || response?.data?.id_proveedor || response?.id_proveedor;
+          if (!providerId) throw new Error('No se recibió el identificador del proveedor creado.');
+          await put(`/m3/proveedores/${encodeURIComponent(providerId)}/articulos`, {
+            articulos: (sup.suppliedItems ?? []).map((item) => ({
+              id_articulo: item.inventoryItemId,
+              plazo_entrega_dias: Number(item.leadTimeDays),
+              precio_referencia: money(item.referencePrice),
+            })),
+          });
+          return response;
+        },
         { refreshKeys: ['proveedores'], detail: `${sup.name} · RUC ${ruc}` }
       );
     },

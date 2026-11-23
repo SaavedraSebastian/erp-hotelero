@@ -30,6 +30,8 @@
             <th class="text-right">Costo</th>
             <th class="text-right">Precio Venta</th>
             <th class="text-right">Margen</th>
+            <th>Estado</th>
+            <th class="text-right">Acciones</th>
           </tr>
         </thead>
         <tbody data-ref="tbody"></tbody>
@@ -50,5 +52,7 @@
     <td class="text-right font-mono text-slate-500" data-ref="cost"></td>
     <td class="text-right font-mono font-semibold text-navy" data-ref="price"></td>
     <td class="text-right font-mono font-semibold text-teal" data-ref="margin"></td>
+    <td data-ref="status"></td>
+    <td><button type="button" class="btn btn-outline-muted btn-xs hidden" data-ref="status-btn"></button></td>
   </tr>
 </template>
