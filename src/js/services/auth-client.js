@@ -1,4 +1,5 @@
 import { getSupabaseClient, isSupabaseConfigured } from './data-adapter.js';
+import { getActiveSiteId, setActiveSiteId } from './site-context.js';
 
 let inMemorySessionToken = null;
 let authSubscription = null;
@@ -133,6 +134,7 @@ function mapV1SessionToErpSession(v1Session, emailFallback = '') {
   return {
     user: {
       id: v1Session.usuario.id,
+      erpId: v1Session.usuario.idErp,
       codigoUsuario: v1Session.usuario.codigo,
       name: v1Session.usuario.nombre,
       email: emailFallback || `${v1Session.usuario.codigo}@hotelboulevard.pe`,
@@ -141,6 +143,8 @@ function mapV1SessionToErpSession(v1Session, emailFallback = '') {
       roleLabel: roles.join(' · ') || 'Usuario ERP',
       department: v1Session.usuario.departamento,
       turno: v1Session.usuario.turno,
+      sites: Array.isArray(v1Session.sedes) ? v1Session.sedes : [],
+      activeSiteId: v1Session.sedeActiva || '',
     },
     permissions: deriveUiPermissionsFromV1(v1Session),
     erpPermisos: v1Session.permisos || [],
@@ -150,14 +154,20 @@ function mapV1SessionToErpSession(v1Session, emailFallback = '') {
 
 async function fetchV1Session(accessToken, emailFallback = '') {
   setSessionToken(accessToken);
+  const selectedSite = getActiveSiteId();
   const res = await fetch('/api/v1/session/me', {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${accessToken}`,
       'X-Requested-With': 'SGH-ERP',
+      ...(selectedSite ? { 'X-Sede-Id': selectedSite } : {}),
     },
     credentials: 'include',
   });
+  if (!res.ok && res.status === 403 && selectedSite) {
+    setActiveSiteId('');
+    return fetchV1Session(accessToken, emailFallback);
+  }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     return {
@@ -168,6 +178,7 @@ async function fetchV1Session(accessToken, emailFallback = '') {
     };
   }
   const body = await res.json();
+  if (body.sedeActiva) setActiveSiteId(body.sedeActiva);
   return { ok: true, data: mapV1SessionToErpSession(body, emailFallback) };
 }
 
@@ -309,6 +320,7 @@ export async function apiGetDirectory(authMode = 'legacy_fallback') {
       headers: {
         'X-Requested-With': 'SGH-ERP',
         ...authHeaders(),
+        ...(getActiveSiteId() ? { 'X-Sede-Id': getActiveSiteId() } : {}),
       },
       credentials: 'include',
     });

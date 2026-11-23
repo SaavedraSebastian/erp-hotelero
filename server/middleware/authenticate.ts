@@ -28,11 +28,13 @@ export async function authenticateJwt(req: Request, _res: Response, next: NextFu
   try {
     const token = extractBearerToken(req);
     const claims = await verifySupabaseJwt(token);
-    const authContext = await resolveErpAuthContext(claims.authUserId);
+    const requestedSedeId = String(req.headers['x-sede-id'] ?? '').trim() || undefined;
+    const authContext = await resolveErpAuthContext(claims.authUserId, requestedSedeId);
 
     req.authContext = authContext;
     if (req.ctx) {
       req.ctx.userCode = authContext.codigoUsuario;
+      req.ctx.siteId = authContext.sedeId;
     }
     next();
   } catch (err) {

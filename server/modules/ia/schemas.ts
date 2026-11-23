@@ -33,6 +33,11 @@ export const demandaPronosticarBodySchema = z.object({
   message: 'fechaHasta debe ser mayor o igual a fechaDesde.',
 });
 
+export const demandaDecisionBodySchema = z.object({
+  decision: z.enum(['aceptada', 'descartada']),
+  comentario: z.string().trim().max(500).optional().nullable(),
+});
+
 export const finanzasEvaluarBodySchema = z.object({
   periodo: z.union([z.literal(7), z.literal(30), z.literal(90)]).default(30),
   tipo: z.enum(['BASE', 'ESCENARIO']).default('BASE'),

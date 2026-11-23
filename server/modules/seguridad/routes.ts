@@ -13,6 +13,7 @@ export function createSeguridadRouter(): Router {
     res.json({
       usuario: {
         id: ctx.authUserId,
+        idErp: ctx.usuarioId,
         codigo: ctx.codigoUsuario,
         nombre: ctx.nombre,
         departamento: ctx.departamento,
@@ -21,6 +22,8 @@ export function createSeguridadRouter(): Router {
       },
       roles: ctx.roles,
       permisos: ctx.permisos,
+      sedeActiva: ctx.sedeId,
+      sedes: ctx.sedes,
       fechaOperativa: getOperationalTimestampLima(),
     });
   });

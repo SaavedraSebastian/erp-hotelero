@@ -213,6 +213,19 @@ export const mapExpenseRows = (rows) => mapM4({ gastos: rows }).expenses;
 export const mapComandaRows = (rows) => mapM3({ comandas: rows }).posOrders;
 export const mapConsumoRows = (rows) => mapM3({ consumos: rows }).posOrders;
 export const mapPurchaseOrderRows = (rows) => mapM3({ ordenesCompra: rows }).purchaseOrders;
+export const mapDemandRecommendationRows = (rows) => rows.map((r) => ({
+  id: idOf(r.id_recomendacion),
+  forecastId: idOf(r.id_pronostico),
+  type: r.tipo || '',
+  reason: r.motivo || '',
+  estimatedQuantity: toNumber(r.cantidad_estimada),
+  resultType: r.tipo_resultado || '',
+  status: titleCase(r.estado),
+  rawStatus: r.estado || '',
+  comment: r.comentario_decision || '',
+  period: `${toDate(r.fecha_desde)} — ${toDate(r.fecha_hasta)}`,
+  createdAt: toStamp(r.fecha_hora_generacion),
+}));
 export const mapCleaningRows = (rows) => mapM2({ ordenesLimpieza: rows }).cleaningOrders;
 export const mapIncidentRows = (rows) => mapM2({ incidencias: rows }).incidents;
 export const mapWorkOrderRows = (rows) => mapM2({ ordenesTrabajo: rows }).workOrders;
@@ -290,12 +303,16 @@ export function mapCatalogs(cat) {
 
 /** Catálogos de apoyo a los formularios de M2 y M3 (puntos de venta, categorías, unidades, tipos de activo y áreas). */
 export function mapExtraCatalogs({ catalogo, catalogosM2 } = {}) {
-  const byUse = (uso) =>
-    (catalogo?.categorias ?? []).filter((c) => c.uso === uso).map((c) => ({ id: idOf(c.id_categoria), name: c.nombre || '' }));
   return {
-    posPoints: (catalogo?.puntos_venta ?? []).map((p) => ({ id: idOf(p.id_punto_venta), name: p.nombre || '' })),
-    menuCategories: byUse('catálogo'),
-    stockCategories: byUse('almacén'),
+    posPoints: (catalogo?.puntos_venta ?? []).map((p) => ({
+      id: idOf(p.id_punto_venta), name: p.nombre || '', type: p.tipo || '', active: p.estado === 'activo',
+    })),
+    menuCategories: (catalogo?.categorias ?? []).filter((c) => c.uso === 'catálogo').map((c) => ({
+      id: idOf(c.id_categoria), name: c.nombre || '', use: c.uso || '', active: c.estado !== 'inactivo',
+    })),
+    stockCategories: (catalogo?.categorias ?? []).filter((c) => c.uso === 'almacén').map((c) => ({
+      id: idOf(c.id_categoria), name: c.nombre || '', use: c.uso || '', active: c.estado !== 'inactivo',
+    })),
     units: (catalogo?.unidades ?? []).map((u) => ({ id: idOf(u.id_unidad_medida), name: u.nombre || '', symbol: u.simbolo || '' })),
     assetTypes: (catalogosM2?.tipos_activo ?? []).map((t) => ({ id: idOf(t.id), name: t.nombre || '' })),
     areas: (catalogosM2?.areas ?? []).map((a) => ({ id: idOf(a.id), name: a.nombre || '' })),
@@ -335,7 +352,7 @@ export function mapM3({
       itemType: it.tipo_item || '',
       price: toNumber(it.precio_vigente),
       cost: 0, // sin dato en la API
-      available: it.estado === 'activo',
+      available: it.estado === 'activo' && it.punto_venta_estado !== 'inactivo',
       stockControl: it.id_articulo_descuento ? 'Directo' : 'Sin control',
       linkedInventoryItemId: optId(it.id_articulo_descuento),
     }));
@@ -352,7 +369,7 @@ export function mapM3({
       price: toNumber(it.precio_vigente),
       cost: 0,
       durationMinutes: it.duracion_estimada != null ? toNumber(it.duracion_estimada) : undefined,
-      active: it.estado === 'activo',
+      active: it.estado === 'activo' && it.punto_venta_estado !== 'inactivo',
       description: '',
     }));
 
@@ -369,6 +386,7 @@ export function mapM3({
     const zone = puntos.get(String(m.id_punto_venta)) || '';
     return {
       id,
+      rawName: m.nombre || id,
       number: mesaNameCount.get(m.nombre) > 1 ? `${m.nombre} · ${posCategory(zone)}` : m.nombre || id,
       posId: idOf(m.id_punto_venta),
       zone,
@@ -448,6 +466,10 @@ export function mapM3({
     unitCost: toNumber(a.costo_unitario), // costo del último lote recibido
     expiryDate: a.proximo_vencimiento ? toDate(a.proximo_vencimiento) : undefined, // lote con stock que vence primero
     categoryId: idOf(a.id_categoria),
+    unitId: idOf(a.id_unidad_medida),
+    expires: Boolean(a.vence),
+    warnDays: toNumber(a.dias_aviso_vencimiento),
+    active: a.estado === 'activo',
     supplierId: '',
   }));
 
@@ -466,6 +488,8 @@ export function mapM3({
       productId: idOf(r.id_item_catalogo),
       productName: r.item_nombre || '',
       version: toNumber(r.numero_version),
+      status: titleCase(r.estado || 'vigente'),
+      rawStatus: r.estado || 'vigente',
       salePrice,
       recipeCost,
       marginPct: salePrice > 0 ? Math.round(((salePrice - recipeCost) / salePrice) * 100) : 0,
@@ -535,10 +559,22 @@ export function mapM3({
       inventoryItemId: idOf(d.id_articulo),
       itemName: d.articulo || '',
       quantity: toNumber(d.cantidad_solicitada),
+      receivedQuantity: toNumber(d.cantidad_aceptada),
+      pendingQuantity: Math.max(0, toNumber(d.cantidad_solicitada) - toNumber(d.cantidad_aceptada)),
       unitCost: toNumber(d.precio_referencia),
+    })),
+    receipts: (Array.isArray(o.recepciones) ? o.recepciones : []).map((r) => ({
+      id: idOf(r.id_recepcion),
+      createdAt: toStamp(r.fecha_hora),
+      documentNumber: r.numero_guia_factura || '',
+      status: titleCase(r.estado),
+      rawStatus: r.estado || '',
     })),
     total: toNumber(o.total_estimado),
     status: o.estado === 'completada' ? 'Recibida' : titleCase(o.estado),
+    rawStatus: o.estado || '',
+    deliveryExpected: toDate(o.fecha_entrega_esperada),
+    decisionReason: o.motivo_decision || '',
     createdAt: toStamp(o.fecha_hora_preparacion),
   }));
 

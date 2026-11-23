@@ -12,7 +12,7 @@ import { getRoute, navigateToView } from '../core/router.js';
 import { erpStore } from '../core/store.js';
 import { ALL_ROLE_IDS, ROLE_LABELS } from '../data/rbac.js';
 import { v1Api } from '../services/api-client.js';
-import { ModuleHeader, StatusText } from '../components/ui-components.js';
+import { ModuleHeader, StatusText, openModal } from '../components/ui-components.js';
 import moduloBaseHtml from '../../html/modules/modulo-base.html?raw';
 import rbacHtml from '../../html/pages/configuracion/rbac.html?raw';
 import usuariosHtml from '../../html/pages/configuracion/usuarios.html?raw';
@@ -121,6 +121,130 @@ export function renderConfigPage() {
     }
 
     if (activeTab === 'rbac') {
+      const canManageSites = currentUser.role === 'admin' || canEditRbac;
+      const refreshSites = async () => {
+        const response = await v1Api.getSedes();
+        erpStore.setSites(response?.data ?? [], response?.sedeActiva);
+      };
+      const openSiteModal = (editingSite = null) => openModal({
+        title: editingSite ? `Editar ${editingSite.nombre}` : 'Registrar nueva sede',
+        subtitle: editingSite ? 'Los cambios se reflejan al seleccionar esta sede.' : 'La nueva sede inicia sin datos operativos y con inventario independiente.',
+        renderBody: (close) => {
+          const code = h('input', { className: 'input-control font-mono', required: true, maxlength: 20, placeholder: 'CUSCO' });
+          const name = h('input', { className: 'input-control', required: true, placeholder: 'Hotel Boulevard - Sede Cusco' });
+          const commercial = h('input', { className: 'input-control', required: true, value: 'Hotel Boulevard' });
+          const address = h('input', { className: 'input-control', placeholder: 'Dirección de la sede' });
+          if (editingSite) {
+            code.value = editingSite.codigo;
+            code.disabled = true;
+            name.value = editingSite.nombre;
+            commercial.value = editingSite.nombreComercial || 'Hotel Boulevard';
+          }
+          const cancel = h('button', { type: 'button', className: 'btn btn-outline-muted' }, 'Cancelar');
+          const submit = h('button', { type: 'submit', className: 'btn btn-primary' }, editingSite ? 'Guardar cambios' : 'Crear sede');
+          const field = (label, input) => h('div', null, h('label', { className: 'field-label' }, label), input);
+          const form = h('form', { className: 'stack-md' },
+            h('div', { className: 'grid-2' }, field('Código', code), field('Nombre de sede', name), field('Nombre comercial', commercial), field('Dirección', address)),
+            h('div', { className: 'row-wrap justify-end' }, cancel, submit)
+          );
+          cancel.addEventListener('click', close);
+          form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            submit.disabled = true;
+            try {
+              const payload = {
+                codigo: code.value.trim(), nombre: name.value.trim(), nombreComercial: commercial.value.trim(),
+                direccion: address.value.trim() || null, zonaHoraria: 'America/Lima', moneda: 'PEN',
+              };
+              if (editingSite) await v1Api.updateSede(editingSite.id, payload);
+              else await v1Api.createSede(payload);
+              await refreshSites();
+              close();
+            } catch (error) {
+              submit.disabled = false;
+              erpStore.pushToast({ title: 'No se pudo crear la sede', detail: error.message, type: 'error' });
+            }
+          });
+          return form;
+        },
+      });
+      const openSiteUsersModal = async (site) => {
+        try {
+          const response = await v1Api.getSedeUsers(site.id);
+          const assigned = new Map((response?.data ?? []).map((row) => [String(row.id_usuario), row]));
+          openModal({
+            title: `Usuarios de ${site.nombre}`,
+            subtitle: 'Define quién puede consultar y operar esta sede.',
+            renderBody: (close) => {
+              const controls = directoryUsers.map((user) => {
+                const current = assigned.get(String(user.id));
+                const access = h('input', { type: 'checkbox', checked: current?.estado === 'activo' });
+                const preferred = h('input', { type: 'checkbox', checked: Boolean(current?.es_predeterminada) });
+                const isCurrentOperator = String(user.id) === String(currentUser.erpId)
+                  && site.id === currentUser.activeSiteId;
+                access.disabled = isCurrentOperator;
+                const row = h('div', { className: 'row-between card card-pad' },
+                  h('div', null,
+                    h('div', { className: 'text-xs font-semibold text-navy' }, user.name),
+                    h('div', { className: 'text-11 text-slate-500' }, isCurrentOperator ? `${user.roleLabel} · sesión actual` : user.roleLabel)
+                  ),
+                  h('div', { className: 'row-wrap text-xs' }, h('label', { className: 'row-wrap' }, access, ' Acceso'), h('label', { className: 'row-wrap' }, preferred, ' Predeterminada'))
+                );
+                preferred.addEventListener('change', () => { if (preferred.checked) access.checked = true; });
+                return { user, access, preferred, row };
+              });
+              const cancel = h('button', { type: 'button', className: 'btn btn-outline-muted' }, 'Cancelar');
+              const save = h('button', { type: 'submit', className: 'btn btn-primary' }, 'Guardar asignaciones');
+              const form = h('form', { className: 'stack-md' }, ...controls.map((c) => c.row), h('div', { className: 'row-wrap justify-end' }, cancel, save));
+              cancel.addEventListener('click', close);
+              form.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                save.disabled = true;
+                try {
+                  const changed = controls.filter((control) => {
+                    const previous = assigned.get(String(control.user.id));
+                    const wasActive = previous?.estado === 'activo';
+                    const wasPreferred = Boolean(previous?.es_predeterminada);
+                    return wasActive !== control.access.checked
+                      || wasPreferred !== (control.access.checked && control.preferred.checked);
+                  });
+                  for (const control of changed) {
+                    await v1Api.assignUserToSede(site.id, control.user.id, {
+                      activo: control.access.checked,
+                      predeterminada: control.access.checked && control.preferred.checked,
+                    });
+                  }
+                  await refreshSites();
+                  close();
+                } catch (error) {
+                  save.disabled = false;
+                  erpStore.pushToast({ title: 'No se guardaron las asignaciones', detail: error.message, type: 'error' });
+                }
+              });
+              return form;
+            },
+          });
+        } catch (error) {
+          erpStore.pushToast({ title: 'No se pudieron leer las asignaciones', detail: error.message, type: 'error' });
+        }
+      };
+
+      setVisible(tabNode, 'new-site-btn', canManageSites);
+      if (canManageSites) getRef(tabNode, 'new-site-btn').addEventListener('click', openSiteModal);
+      mountRef(tabNode, 'sites-grid', (currentUser.sites ?? []).map((site) => {
+        const card = clone('card-sede');
+        setText(card, 'name', site.nombre);
+        setText(card, 'code', site.codigo);
+        mountRef(card, 'status', StatusText({ label: site.id === currentUser.activeSiteId ? 'Sede activa' : 'Disponible', variant: site.id === currentUser.activeSiteId ? 'success' : 'info' }));
+        setVisible(card, 'edit-btn', canManageSites);
+        setVisible(card, 'users-btn', canManageSites);
+        if (canManageSites) {
+          getRef(card, 'edit-btn').addEventListener('click', () => openSiteModal(site));
+          getRef(card, 'users-btn').addEventListener('click', () => openSiteUsersModal(site));
+        }
+        return card;
+      }));
+
       if (!canEditRbac) {
         mountRef(tabNode, 'readonly-badge', StatusText({ label: 'Solo lectura (Auditor)', variant: 'info' }));
       }

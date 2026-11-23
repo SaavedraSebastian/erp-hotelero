@@ -688,6 +688,128 @@ export function createWriteActions(ctx) {
       );
     },
 
+    async updatePurchaseOrder(poId, input) {
+      if (!input.supplierId) return fail('Proveedor requerido', 'Selecciona un proveedor.');
+      return run(
+        'Orden de compra actualizada',
+        () => put(`/m3/ordenes-compra/${encodeURIComponent(poId)}`, {
+          id_proveedor: input.supplierId,
+          fecha_entrega_esperada: input.deliveryExpected || addDays(TODAY, 3),
+          items: input.items.map((i) => ({
+            id_articulo: i.inventoryItemId,
+            cantidad_solicitada: Number(i.quantity),
+            precio_referencia_capturado: money(i.unitCost || 0),
+          })),
+        }),
+        { refreshKeys: ['ordenesCompra'], detail: poId }
+      );
+    },
+
+    async decidePurchaseOrder(poId, decision, reason) {
+      const motivo = String(reason ?? '').trim();
+      if (motivo.length < 3) return fail('Motivo requerido', 'Indica un motivo de al menos 3 caracteres.');
+      const action = decision === 'aprobar' ? 'aprobar' : 'rechazar';
+      return run(
+        action === 'aprobar' ? 'Orden aprobada' : 'Orden rechazada',
+        () => post(`/m3/ordenes-compra/${encodeURIComponent(poId)}/${action}`, { motivo_decision: motivo }),
+        { refreshKeys: ['ordenesCompra'], detail: `${poId} · ${motivo}` }
+      );
+    },
+
+    async cancelPurchaseOrder(poId, reason) {
+      const motivo = String(reason ?? '').trim();
+      if (motivo.length < 3) return fail('Motivo requerido', 'Indica un motivo de al menos 3 caracteres.');
+      return run(
+        'Orden cancelada',
+        () => post(`/m3/ordenes-compra/${encodeURIComponent(poId)}/cancelar`, { motivo }),
+        { refreshKeys: ['ordenesCompra'], detail: `${poId} · ${motivo}` }
+      );
+    },
+
+    async sendPurchaseOrder(poId, medium = 'correo') {
+      return run(
+        'Orden enviada al proveedor',
+        () => post(`/m3/ordenes-compra/${encodeURIComponent(poId)}/enviar`, { medio_envio: medium }),
+        { refreshKeys: ['ordenesCompra'], detail: `${poId} · ${medium}` }
+      );
+    },
+
+    async createServiceRequest(input) {
+      const st = s();
+      const reservation = (st.reservations ?? []).find(
+        (r) => r.status === 'Check-in' && r.details.some((d) => d.roomId === input.roomId && d.stayId)
+      );
+      const stayId = reservation?.details.find((d) => d.roomId === input.roomId && d.stayId)?.stayId;
+      if (!stayId) return fail('Habitación sin estadía activa', 'Selecciona una habitación con check-in vigente.');
+      const scheduled = input.scheduledAt
+        ? `${input.scheduledAt.length === 16 ? `${input.scheduledAt}:00` : input.scheduledAt}-05:00`
+        : undefined;
+      return run(
+        'Solicitud de servicio registrada',
+        () => post('/m3/solicitudes-servicio', {
+          id_estadia_externa: stayId,
+          id_item_catalogo: input.serviceId,
+          cantidad_solicitada: Number(input.quantity),
+          fecha_hora_prevista: scheduled,
+        }),
+        { detail: `Habitación ${input.roomNumber || ''}` }
+      );
+    },
+
+    async startServiceRequest(id) {
+      return run('Solicitud puesta en atención', () => post(`/m3/solicitudes-servicio/${encodeURIComponent(id)}/iniciar`));
+    },
+
+    async cancelServiceRequest(id, motivo) {
+      return run(
+        'Solicitud cancelada',
+        () => post(`/m3/solicitudes-servicio/${encodeURIComponent(id)}/cancelar`, { motivo })
+      );
+    },
+
+    async completeServiceRequest(request, input) {
+      const st = s();
+      const reservation = (st.reservations ?? []).find((r) =>
+        r.status === 'Check-in' && r.details.some((d) => String(d.stayId) === String(request.stayId))
+      );
+      const accountId = (st.folios ?? []).find((f) => f.reservationId === reservation?.id)?.id;
+      const roomCharge = input.paymentMode === 'Cargo a Habitación';
+      if (roomCharge && !accountId) return fail('Sin cuenta para cargar', 'La estadía no tiene un folio abierto.');
+      return run(
+        'Solicitud completada y consumo generado',
+        () => post(`/m3/solicitudes-servicio/${encodeURIComponent(request.id)}/completar`, {
+          cantidad_prestada: Number(input.quantity),
+          forma_cobro: roomCharge ? 'cargo a la habitación' : 'pago directo',
+          id_cuenta_cobro_externa: roomCharge ? accountId : undefined,
+        }),
+        { refreshKeys: ['consumos'], detail: roomCharge ? 'Cargo a habitación' : 'Pago directo' }
+      );
+    },
+
+    async confirmConsumption(id) {
+      return run(
+        'Consumo confirmado',
+        () => post(`/m3/consumos/${encodeURIComponent(id)}/confirmar`),
+        { refreshKeys: ['inventario'], detail: id }
+      );
+    },
+
+    async discardConsumption(id, motivo) {
+      return run(
+        'Consumo descartado',
+        () => post(`/m3/consumos/${encodeURIComponent(id)}/descartar`, { motivo }),
+        { detail: id }
+      );
+    },
+
+    async annulConsumption(id, motivo) {
+      return run(
+        'Consumo anulado',
+        () => post(`/m3/consumos/${encodeURIComponent(id)}/anular`, { motivo }),
+        { refreshKeys: ['inventario'], detail: id }
+      );
+    },
+
     /**
      * Venta POS. Restaurante, Bar y Room Service generan una comanda (se prepara y se entrega);
      * Minibar y servicios complementarios generan un consumo (se confirma). Si los ítems pertenecen
@@ -842,6 +964,54 @@ export function createWriteActions(ctx) {
         { refreshKeys: ['catalogo', 'comandas'], detail: table.name }
       );
     },
+    async upsertTable(table) {
+      const nombre = String(table.name ?? '').trim();
+      if (!nombre || !table.posId) return fail('Datos incompletos', 'Indica el nombre y el punto de venta de la mesa.');
+      return run(
+        table.id ? 'Mesa actualizada' : 'Mesa creada',
+        () => table.id
+          ? put(`/m3/mesas/${encodeURIComponent(table.id)}`, { nombre })
+          : post('/m3/mesas', { nombre, id_punto_venta: table.posId }),
+        { refreshKeys: ['catalogo'], detail: nombre }
+      );
+    },
+    async upsertPointOfSale(point) {
+      const nombre = String(point.name ?? '').trim();
+      const tipo = String(point.type ?? '').trim();
+      if (nombre.length < 3 || tipo.length < 3) return fail('Datos incompletos', 'Nombre y tipo deben tener al menos 3 caracteres.');
+      return run(
+        point.id ? 'Punto de venta actualizado' : 'Punto de venta creado',
+        () => point.id
+          ? put(`/m3/puntos-venta/${encodeURIComponent(point.id)}`, { nombre, tipo })
+          : post('/m3/puntos-venta', { nombre, tipo }),
+        { refreshKeys: ['catalogo'], detail: nombre }
+      );
+    },
+    async setPointOfSaleStatus(pointId, active) {
+      return run(
+        active ? 'Punto de venta activado' : 'Punto de venta desactivado',
+        () => put(`/m3/puntos-venta/${encodeURIComponent(pointId)}`, { estado: active ? 'activo' : 'inactivo' }),
+        { refreshKeys: ['catalogo'], detail: pointId }
+      );
+    },
+    async upsertM3Category(category) {
+      const nombre = String(category.name ?? '').trim();
+      if (nombre.length < 2) return fail('Nombre requerido', 'El nombre debe tener al menos 2 caracteres.');
+      return run(
+        category.id ? 'Categoría actualizada' : 'Categoría creada',
+        () => category.id
+          ? put(`/m3/categorias/${encodeURIComponent(category.id)}`, { nombre, uso: category.use })
+          : post('/m3/categorias', { nombre, uso: category.use }),
+        { refreshKeys: ['catalogo'], detail: nombre }
+      );
+    },
+    async setM3CategoryStatus(categoryId, active) {
+      return run(
+        active ? 'Categoría activada' : 'Categoría desactivada',
+        () => put(`/m3/categorias/${encodeURIComponent(categoryId)}`, { estado: active ? 'activo' : 'inactivo' }),
+        { refreshKeys: ['catalogo'], detail: categoryId }
+      );
+    },
     /** Productos de carta (plato / bebida / producto). El costo no se guarda: se calcula con la receta o el artículo ligado. */
     async upsertProduct(p) {
       return saveCatalogItem(p, 'Producto');
@@ -862,6 +1032,27 @@ export function createWriteActions(ctx) {
       });
     },
 
+    async setRecipeStatus(recipeId, status) {
+      const estado = status === 'vigente' ? 'vigente' : 'inactiva';
+      return run(
+        estado === 'vigente' ? 'Receta activada' : 'Receta desactivada',
+        () => put(`/m3/recetas/${encodeURIComponent(recipeId)}/estado`, { estado }),
+        { refreshKeys: ['recetas'], detail: recipeId }
+      );
+    },
+
+    async decideDemandRecommendation(recommendationId, decision, comment) {
+      const decisionCode = decision === 'aceptada' ? 'aceptada' : 'descartada';
+      return run(
+        decisionCode === 'aceptada' ? 'Recomendación aceptada' : 'Recomendación descartada',
+        () => post(`/ai/demanda/recomendaciones/${encodeURIComponent(recommendationId)}/decision`, {
+          decision: decisionCode,
+          comentario: String(comment ?? '').trim() || null,
+        }),
+        { detail: recommendationId }
+      );
+    },
+
     /** Alta de artículo de almacén; con stock inicial se crea su primer lote y su movimiento. */
     async upsertInventoryItem(i) {
       const nombre = String(i.name ?? '').trim();
@@ -869,21 +1060,32 @@ export function createWriteActions(ctx) {
       if (!i.categoryId || !i.unitId) return fail('Datos incompletos', 'Selecciona la categoría y la unidad de medida.');
       const stock = Number(i.stock || 0);
       if (stock > 0 && i.expires && !i.expiryDate) return fail('Vencimiento requerido', 'Indica la fecha de vencimiento del stock inicial.');
+      const payload = {
+        nombre,
+        id_categoria: i.categoryId,
+        id_unidad_medida: i.unitId,
+        vence: Boolean(i.expires),
+        dias_aviso_vencimiento: Boolean(i.expires) ? Number(i.warnDays || 0) : 0,
+        stock_minimo: Number(i.minStock || 0),
+      };
       return run(
-        'Artículo registrado en almacén',
-        () =>
-          post('/m3/articulos', {
-            nombre,
-            id_categoria: i.categoryId,
-            id_unidad_medida: i.unitId,
-            vence: Boolean(i.expires),
-            dias_aviso_vencimiento: Boolean(i.expires) ? Number(i.warnDays || 0) : 0,
-            stock_minimo: Number(i.minStock || 0),
+        i.id ? 'Artículo actualizado' : 'Artículo registrado en almacén',
+        () => i.id
+          ? put(`/m3/articulos/${encodeURIComponent(i.id)}`, payload)
+          : post('/m3/articulos', {
+            ...payload,
             stock_inicial: stock,
             costo_unitario: money(i.unitCost || 0),
             fecha_vencimiento: i.expires ? i.expiryDate : null,
           }),
         { refreshKeys: ['inventario'], detail: `${nombre}${stock > 0 ? ` · stock inicial ${stock}` : ''}` }
+      );
+    },
+    async setInventoryItemStatus(itemId, active) {
+      return run(
+        active ? 'Artículo activado' : 'Artículo desactivado',
+        () => put(`/m3/articulos/${encodeURIComponent(itemId)}`, { estado: active ? 'activo' : 'inactivo' }),
+        { refreshKeys: ['inventario'], detail: itemId }
       );
     },
     /** La tabla de proveedores guarda RUC, razón social, teléfono y correo (rubro, contacto y plazo se derivan de otras tablas). */
@@ -894,9 +1096,23 @@ export function createWriteActions(ctx) {
       const correo = String(sup.email ?? '').trim();
       if (!telefono && !correo) return fail('Contacto requerido', 'Indica al menos un teléfono o un correo.');
       return run(
-        'Proveedor registrado',
-        () => post('/m3/proveedores', { ruc, razon_social: String(sup.name ?? '').trim(), telefono: telefono || null, correo: correo || null }),
+        sup.id ? 'Proveedor actualizado' : 'Proveedor registrado',
+        () => (sup.id ? put : post)(sup.id ? `/m3/proveedores/${encodeURIComponent(sup.id)}` : '/m3/proveedores', {
+          ruc, razon_social: String(sup.name ?? '').trim(), telefono: telefono || null, correo: correo || null,
+        }),
         { refreshKeys: ['proveedores'], detail: `${sup.name} · RUC ${ruc}` }
+      );
+    },
+    async setSupplierStatus(supplierId, active, reason) {
+      const motivo = String(reason ?? '').trim();
+      if (!active && motivo.length < 3) return fail('Motivo requerido', 'Indica por qué se desactiva el proveedor.');
+      return run(
+        active ? 'Proveedor activado' : 'Proveedor desactivado',
+        () => put(`/m3/proveedores/${encodeURIComponent(supplierId)}`, {
+          estado: active ? 'activo' : 'inactivo',
+          motivo_desactivacion: active ? null : motivo,
+        }),
+        { refreshKeys: ['proveedores'], detail: supplierId }
       );
     },
     /** Despacha lo solicitado o, si el almacén tiene menos, lo disponible (entrega parcial). Sin stock no se despacha. */
@@ -914,23 +1130,34 @@ export function createWriteActions(ctx) {
       );
     },
 
-    /** Recepción total: se acepta la cantidad pedida de cada línea al precio de referencia de la orden. */
-    async receivePurchaseOrder(poId) {
-      const po = (s().purchaseOrders ?? []).find((o) => o.id === poId);
-      if (!po) return fail('Orden no encontrada', 'Actualiza la página e inténtalo de nuevo.');
-      if (!po.items?.length) return fail('Orden sin líneas', 'La orden no tiene líneas para recepcionar.');
+    /** Registra una recepción total o parcial y deja el saldo pendiente para una recepción posterior. */
+    async receivePurchaseOrder(poId, input) {
+      if (!input?.items?.length) return fail('Recepción vacía', 'Registra al menos una cantidad aceptada o rechazada.');
       return run(
         'Orden de compra recepcionada',
         () =>
-          post(`/m3/ordenes-compra/${encodeURIComponent(po.id)}/recepciones`, {
-            items: po.items.map((i) => ({
+          post(`/m3/ordenes-compra/${encodeURIComponent(poId)}/recepciones`, {
+            numero_guia_factura: input.documentNumber || null,
+            items: input.items.map((i) => ({
               id_detalle_orden: i.id,
-              cantidad_aceptada: i.quantity,
-              cantidad_rechazada: 0,
+              cantidad_aceptada: Number(i.accepted || 0),
+              cantidad_rechazada: Number(i.rejected || 0),
+              motivo_rechazo: i.rejectionReason || null,
               costo_unitario: money(i.unitCost),
+              fecha_vencimiento: i.expiryDate || null,
             })),
           }),
-        { refreshKeys: ['ordenesCompra', 'inventario'], detail: `${po.code} · recepción total de ${po.items.length} línea(s)` }
+        { refreshKeys: ['ordenesCompra', 'inventario'], detail: `${poId} · ${input.items.length} línea(s)` }
+      );
+    },
+
+    async annulPurchaseReceipt(poId, receiptId, reason) {
+      const motivo = String(reason ?? '').trim();
+      if (motivo.length < 3) return fail('Motivo requerido', 'Indica un motivo de al menos 3 caracteres.');
+      return run(
+        'Recepción anulada',
+        () => post(`/m3/ordenes-compra/${encodeURIComponent(poId)}/recepciones/${encodeURIComponent(receiptId)}/anular`, { motivo }),
+        { refreshKeys: ['ordenesCompra', 'inventario'], detail: `${poId} · ${motivo}` }
       );
     },
 
