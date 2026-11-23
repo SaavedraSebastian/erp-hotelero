@@ -1,3 +1,15 @@
+<div class="stack-md">
+<div class="card">
+  <div class="card-header">
+    <div>
+      <h2 class="card-title">Sedes de Hotel Boulevard</h2>
+      <p class="card-subtitle">Cada sede mantiene separadas sus operaciones, inventario y finanzas.</p>
+    </div>
+    <button type="button" class="btn btn-primary btn-sm hidden" data-ref="new-site-btn">Nueva sede</button>
+  </div>
+  <div class="grid-3 p-4" data-ref="sites-grid"></div>
+</div>
+
 <div class="card">
   <div class="card-header">
     <div>
@@ -17,6 +29,7 @@
     </table>
   </div>
 </div>
+</div>
 
 <template data-tpl="fila-rbac">
   <tr>
@@ -24,6 +37,22 @@
       <div class="font-semibold text-navy" data-ref="role-name"></div>
     </td>
   </tr>
+</template>
+
+<template data-tpl="card-sede">
+  <div class="card card-pad stack-sm">
+    <div class="row-between">
+      <div>
+        <div class="text-sm font-bold text-navy" data-ref="name"></div>
+        <div class="font-mono text-11 text-slate-500" data-ref="code"></div>
+      </div>
+      <span data-ref="status"></span>
+    </div>
+    <div class="row-wrap justify-end">
+      <button type="button" class="btn btn-outline btn-xs hidden" data-ref="edit-btn">Editar</button>
+      <button type="button" class="btn btn-outline btn-xs hidden" data-ref="users-btn">Asignar usuarios</button>
+    </div>
+  </div>
 </template>
 
 <template data-tpl="celda-rbac-permiso">

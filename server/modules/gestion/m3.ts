@@ -13,6 +13,31 @@ import { aplicarMovimientoStock } from './stock.ts';
 
 const idParam = z.object({ id: varcharIdSchema });
 
+const createPuntoVentaSchema = z.object({
+  nombre: z.string().trim().min(3).max(120),
+  tipo: z.string().trim().min(3).max(40),
+});
+const updatePuntoVentaSchema = z.object({
+  nombre: z.string().trim().min(3).max(120).optional(),
+  tipo: z.string().trim().min(3).max(40).optional(),
+  estado: z.enum(['activo', 'inactivo']).optional(),
+}).refine((v) => Object.keys(v).length > 0, { message: 'Indica al menos un campo a modificar.' });
+
+const createMesaSchema = z.object({
+  id_punto_venta: varcharIdSchema,
+  nombre: z.string().trim().min(1).max(120),
+});
+
+const createCategoriaSchema = z.object({
+  nombre: z.string().trim().min(2).max(120),
+  uso: z.string().trim().min(2).max(40),
+});
+const updateCategoriaSchema = z.object({
+  nombre: z.string().trim().min(2).max(120).optional(),
+  uso: z.string().trim().min(2).max(40).optional(),
+  estado: z.enum(['activo', 'inactivo']).optional(),
+}).refine((v) => Object.keys(v).length > 0, { message: 'Indica al menos un campo a modificar.' });
+
 // ------------------------------------------------------------------------------------------
 // Esquemas
 // ------------------------------------------------------------------------------------------
@@ -26,6 +51,18 @@ export const createProveedorSchema = z
   .refine((d) => Boolean(d.telefono) || Boolean(d.correo), {
     message: 'Indica al menos un medio de contacto (teléfono o correo).',
     path: ['telefono'],
+  });
+
+export const updateProveedorSchema = z.object({
+  ruc: z.string().trim().regex(/^[0-9]{11}$/, 'El RUC debe tener exactamente 11 dígitos.').optional(),
+  razon_social: z.string().trim().min(3).max(120).optional(),
+  telefono: z.string().trim().max(20).optional().nullable(),
+  correo: z.string().trim().email('Correo inválido').max(120).optional().nullable(),
+  estado: z.enum(['activo', 'inactivo']).optional(),
+  motivo_desactivacion: z.string().trim().min(3).max(500).optional().nullable(),
+}).refine((v) => Object.keys(v).length > 0, { message: 'Indica al menos un campo a modificar.' })
+  .refine((v) => v.estado !== 'inactivo' || Boolean(v.motivo_desactivacion), {
+    message: 'Desactivar un proveedor requiere motivo.', path: ['motivo_desactivacion'],
   });
 
 export const createArticuloSchema = z
@@ -46,6 +83,18 @@ export const createArticuloSchema = z
     message: 'Un artículo que vence necesita la fecha de vencimiento del stock inicial.',
     path: ['fecha_vencimiento'],
   });
+
+export const updateArticuloSchema = z.object({
+  nombre: z.string().trim().min(3).max(120).optional(),
+  id_categoria: varcharIdSchema.optional(),
+  id_unidad_medida: varcharIdSchema.optional(),
+  vende_tal_cual: z.boolean().optional(),
+  es_insumo: z.boolean().optional(),
+  vence: z.boolean().optional(),
+  dias_aviso_vencimiento: z.number().int().min(0).max(365).optional(),
+  stock_minimo: z.coerce.number().min(0).optional(),
+  estado: z.enum(['activo', 'inactivo']).optional(),
+}).refine((v) => Object.keys(v).length > 0, { message: 'Indica al menos un campo a modificar.' });
 
 export const createItemCatalogoSchema = z
   .object({
@@ -87,6 +136,8 @@ export const createRecetaSchema = z
     path: ['ingredientes'],
   });
 
+const updateRecetaEstadoSchema = z.object({ estado: z.enum(['vigente', 'inactiva']) });
+
 export const atenderRequisicionSchema = z.object({ cantidad: z.coerce.number().positive().optional() });
 export const rechazarRequisicionSchema = z.object({ motivo: motivoSchema });
 
@@ -101,7 +152,14 @@ function mnemonic(nombre: string): string {
 
 /** Genera un id libre con el patrón existente (ART-LOM, IT-ARP…): prefijo + mnemotécnico, con sufijo numérico si ya existe. */
 async function nextCode(client: PoolClient, table: string, column: string, prefix: string, nombre: string): Promise<string> {
-  const base = `${prefix}-${mnemonic(nombre)}`;
+  const siteResult = await client.query<{ id: string }>(
+    `SELECT COALESCE(NULLIF(current_setting('app.sede_id', true), ''), 'SEDE-PRINCIPAL') AS id`
+  );
+  const siteId = siteResult.rows[0]?.id ?? 'SEDE-PRINCIPAL';
+  const siteToken = siteId === 'SEDE-PRINCIPAL'
+    ? ''
+    : siteId.replace(/^SEDE-/, '').replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 6);
+  const base = `${prefix}-${siteToken ? `${siteToken}-` : ''}${mnemonic(nombre)}`;
   for (let i = 1; i < 100; i++) {
     const candidate = i === 1 ? base : `${base}${i}`;
     const exists = await client.query(`SELECT 1 FROM ${table} WHERE ${column} = $1`, [candidate]);
@@ -139,16 +197,104 @@ export async function crearRequisicion(client: PoolClient, idArticulo: string, c
 // ------------------------------------------------------------------------------------------
 export const updateMesaSchema = z
   .object({
-    estado: z.enum(['activa', 'inactiva']),
+    nombre: z.string().trim().min(1).max(120).optional(),
+    estado: z.enum(['activa', 'inactiva']).optional(),
     motivo_desactivacion: z.string().trim().min(3).max(500).optional().nullable(),
   })
+  .refine((d) => Object.keys(d).length > 0, { message: 'Indica al menos un campo a modificar.' })
   .refine((d) => d.estado === 'activa' || Boolean(d.motivo_desactivacion), {
     message: 'Indica el motivo para desactivar la mesa.',
     path: ['motivo_desactivacion'],
   });
 
 export function registerM3Gestion(router: Router): void {
+  // ---- Puntos de venta y categorías configurables
+  router.post(
+    '/puntos-venta',
+    requirePermission(PERMISSIONS.M3_CATALOGO_ADMINISTRAR),
+    validateBody(createPuntoVentaSchema),
+    handle((req) => withTransaction(req.authContext!, async (client) => {
+      const b = req.body as z.infer<typeof createPuntoVentaSchema>;
+      const id = await nextCode(client, 'g3_servicios.punto_venta', 'id_punto_venta', 'PV', b.nombre);
+      const result = await client.query(
+        `INSERT INTO g3_servicios.punto_venta (id_punto_venta, nombre, tipo, estado)
+         VALUES ($1, $2, $3, 'activo')
+         RETURNING id_punto_venta, nombre, tipo, estado`, [id, b.nombre, b.tipo]
+      );
+      return result.rows[0];
+    }), 201)
+  );
+  router.put(
+    '/puntos-venta/:id',
+    requirePermission(PERMISSIONS.M3_CATALOGO_ADMINISTRAR),
+    validateParams(idParam),
+    validateBody(updatePuntoVentaSchema),
+    handle((req) => withTransaction(req.authContext!, async (client) => {
+      const b = req.body as z.infer<typeof updatePuntoVentaSchema>;
+      const result = await client.query(
+        `UPDATE g3_servicios.punto_venta
+         SET nombre = COALESCE($2, nombre), tipo = COALESCE($3, tipo), estado = COALESCE($4, estado)
+         WHERE id_punto_venta = $1
+         RETURNING id_punto_venta, nombre, tipo, estado`,
+        [req.params.id, b.nombre ?? null, b.tipo ?? null, b.estado ?? null]
+      );
+      if (!result.rows[0]) throw new NotFoundError('Punto de venta no encontrado.');
+      return result.rows[0];
+    }))
+  );
+  router.post(
+    '/categorias',
+    requirePermission(PERMISSIONS.M3_CATALOGO_ADMINISTRAR),
+    validateBody(createCategoriaSchema),
+    handle((req) => withTransaction(req.authContext!, async (client) => {
+      const b = req.body as z.infer<typeof createCategoriaSchema>;
+      const id = await nextCode(client, 'g3_servicios.categoria', 'id_categoria', 'CAT', b.nombre);
+      const result = await client.query(
+        `INSERT INTO g3_servicios.categoria (id_categoria, nombre, uso, estado)
+         VALUES ($1, $2, $3, 'activo') RETURNING id_categoria, nombre, uso, estado`,
+        [id, b.nombre, b.uso]
+      );
+      return result.rows[0];
+    }), 201)
+  );
+  router.put(
+    '/categorias/:id',
+    requirePermission(PERMISSIONS.M3_CATALOGO_ADMINISTRAR),
+    validateParams(idParam),
+    validateBody(updateCategoriaSchema),
+    handle((req) => withTransaction(req.authContext!, async (client) => {
+      const b = req.body as z.infer<typeof updateCategoriaSchema>;
+      const result = await client.query(
+        `UPDATE g3_servicios.categoria
+         SET nombre = COALESCE($2, nombre), uso = COALESCE($3, uso), estado = COALESCE($4, estado)
+         WHERE id_categoria = $1 RETURNING id_categoria, nombre, uso, estado`,
+        [req.params.id, b.nombre ?? null, b.uso ?? null, b.estado ?? null]
+      );
+      if (!result.rows[0]) throw new NotFoundError('Categoría no encontrada.');
+      return result.rows[0];
+    }))
+  );
+
   // ---- Mesas: activar / desactivar
+  router.post(
+    '/mesas',
+    requirePermission(PERMISSIONS.M3_CATALOGO_ADMINISTRAR),
+    validateBody(createMesaSchema),
+    handle((req) => withTransaction(req.authContext!, async (client) => {
+      const b = req.body as z.infer<typeof createMesaSchema>;
+      const pv = await client.query<{ tipo: string; estado: string }>(
+        `SELECT tipo, estado FROM g3_servicios.punto_venta WHERE id_punto_venta = $1`, [b.id_punto_venta]
+      );
+      if (!pv.rows[0] || pv.rows[0].estado !== 'activo') throw new DomainRuleError('Punto de venta inexistente o inactivo.');
+      const id = await nextCode(client, 'g3_servicios.mesa', 'id_mesa', 'M', b.nombre);
+      const result = await client.query(
+        `INSERT INTO g3_servicios.mesa (id_mesa, id_punto_venta, nombre, estado)
+         VALUES ($1, $2, $3, 'activa') RETURNING id_mesa, id_punto_venta, nombre, estado`,
+        [id, b.id_punto_venta, b.nombre]
+      );
+      return result.rows[0];
+    }), 201)
+  );
   router.put(
     '/mesas/:id',
     requirePermission(PERMISSIONS.M3_CATALOGO_ADMINISTRAR),
@@ -168,11 +314,11 @@ export function registerM3Gestion(router: Router): void {
           if (abierta.rows[0]) throw new DomainRuleError('La mesa tiene una comanda abierta; ciérrala o cancélala antes de desactivar la mesa.');
         }
         const res = await client.query(
-          `UPDATE g3_servicios.mesa SET estado = $2::varchar,
-                  motivo_desactivacion = CASE WHEN $2::varchar = 'activa' THEN NULL ELSE $3::varchar END
+          `UPDATE g3_servicios.mesa SET nombre = COALESCE($2, nombre), estado = COALESCE($3::varchar, estado),
+                  motivo_desactivacion = CASE WHEN COALESCE($3::varchar, estado) = 'activa' THEN NULL ELSE COALESCE($4::varchar, motivo_desactivacion) END
            WHERE id_mesa = $1
            RETURNING id_mesa, nombre, estado, motivo_desactivacion`,
-          [req.params.id, b.estado, b.motivo_desactivacion ?? null]
+          [req.params.id, b.nombre ?? null, b.estado ?? null, b.motivo_desactivacion ?? null]
         );
         return res.rows[0];
       })
@@ -206,20 +352,44 @@ export function registerM3Gestion(router: Router): void {
       (req) =>
         withTransaction(req.authContext!, async (client) => {
           const b = req.body as z.infer<typeof createProveedorSchema>;
-          // Los códigos existentes son PRV-01, PRV-02… : se toma el siguiente número libre.
           await client.query(`SELECT pg_advisory_xact_lock(hashtext('g3_servicios.proveedor.codigo'))`);
+          const id = await nextCode(client, 'g3_servicios.proveedor', 'id_proveedor', 'PRV', b.razon_social);
           const res = await client.query(
             `INSERT INTO g3_servicios.proveedor (id_proveedor, ruc, razon_social, telefono, correo, estado)
-             SELECT 'PRV-' || lpad((COALESCE(MAX(NULLIF(regexp_replace(id_proveedor, '\\D', '', 'g'), '')::int), 0) + 1)::text, 2, '0'),
-                    $1, $2, $3, $4, 'activo'
-             FROM g3_servicios.proveedor
+             VALUES ($1, $2, $3, $4, $5, 'activo')
              RETURNING id_proveedor, ruc, razon_social, telefono, correo, estado`,
-            [b.ruc, b.razon_social, b.telefono ?? null, b.correo ?? null]
+            [id, b.ruc, b.razon_social, b.telefono ?? null, b.correo ?? null]
           );
           return res.rows[0];
         }),
       201
     )
+  );
+
+  router.put(
+    '/proveedores/:id',
+    requirePermission(PERMISSIONS.M3_PROVEEDOR_ADMINISTRAR),
+    validateParams(idParam),
+    validateBody(updateProveedorSchema),
+    handle((req) => withTransaction(req.authContext!, async (client) => {
+      const b = req.body as z.infer<typeof updateProveedorSchema>;
+      const result = await client.query(
+        `UPDATE g3_servicios.proveedor SET
+           ruc = COALESCE($2, ruc), razon_social = COALESCE($3, razon_social),
+           telefono = CASE WHEN $4::boolean THEN $5 ELSE telefono END,
+           correo = CASE WHEN $6::boolean THEN $7 ELSE correo END,
+           estado = COALESCE($8, estado),
+           motivo_desactivacion = CASE WHEN COALESCE($8, estado) = 'activo' THEN NULL ELSE COALESCE($9, motivo_desactivacion) END
+         WHERE id_proveedor = $1
+         RETURNING id_proveedor, ruc, razon_social, telefono, correo, estado, motivo_desactivacion`,
+        [req.params.id, b.ruc ?? null, b.razon_social ?? null,
+         Object.hasOwn(b, 'telefono'), b.telefono ?? null,
+         Object.hasOwn(b, 'correo'), b.correo ?? null,
+         b.estado ?? null, b.motivo_desactivacion ?? null]
+      );
+      if (!result.rows[0]) throw new NotFoundError('Proveedor no encontrado.');
+      return result.rows[0];
+    }))
   );
 
   // ---- Artículos de almacén (con stock inicial opcional, que genera su lote y su movimiento)
@@ -257,6 +427,31 @@ export function registerM3Gestion(router: Router): void {
         }),
       201
     )
+  );
+
+  router.put(
+    '/articulos/:id',
+    requirePermission(PERMISSIONS.M3_INVENTARIO_AJUSTAR),
+    validateParams(idParam),
+    validateBody(updateArticuloSchema),
+    handle((req) => withTransaction(req.authContext!, async (client) => {
+      const b = req.body as z.infer<typeof updateArticuloSchema>;
+      const result = await client.query(
+        `UPDATE g3_servicios.articulo_almacen SET
+           nombre = COALESCE($2, nombre), id_categoria = COALESCE($3, id_categoria),
+           id_unidad_medida = COALESCE($4, id_unidad_medida),
+           vende_tal_cual = COALESCE($5, vende_tal_cual), es_insumo = COALESCE($6, es_insumo),
+           vence = COALESCE($7, vence), dias_aviso_vencimiento = COALESCE($8, dias_aviso_vencimiento),
+           stock_minimo = COALESCE($9::numeric, stock_minimo), estado = COALESCE($10, estado)
+         WHERE id_articulo = $1
+         RETURNING id_articulo, nombre, estado, stock_minimo::text AS stock_minimo`,
+        [req.params.id, b.nombre ?? null, b.id_categoria ?? null, b.id_unidad_medida ?? null,
+         b.vende_tal_cual ?? null, b.es_insumo ?? null, b.vence ?? null,
+         b.dias_aviso_vencimiento ?? null, b.stock_minimo ?? null, b.estado ?? null]
+      );
+      if (!result.rows[0]) throw new NotFoundError('Artículo no encontrado.');
+      return result.rows[0];
+    }))
   );
 
   // ---- Ítems de la carta / servicios (el precio se cambia con POST /catalogo/:id/precio, que deja historial)
@@ -330,7 +525,7 @@ export function registerM3Gestion(router: Router): void {
         const res = await client.query(
           `SELECT
              r.id_receta, r.id_item_catalogo, ic.nombre AS item_nombre, ic.precio_vigente::text AS precio_vigente,
-             r.numero_version, r.vigente_desde::text AS vigente_desde,
+             r.numero_version, r.vigente_desde::text AS vigente_desde, r.estado,
              COALESCE((
                SELECT jsonb_agg(jsonb_build_object(
                         'id_articulo', d.id_articulo,
@@ -393,6 +588,36 @@ export function registerM3Gestion(router: Router): void {
         }),
       201
     )
+  );
+
+  router.put(
+    '/recetas/:id/estado',
+    requirePermission(PERMISSIONS.M3_RECETA_ADMINISTRAR),
+    validateParams(idParam),
+    validateBody(updateRecetaEstadoSchema),
+    handle((req) => withTransaction(req.authContext!, async (client) => {
+      const b = req.body as z.infer<typeof updateRecetaEstadoSchema>;
+      if (b.estado === 'vigente') {
+        const target = await client.query<{ id_item_catalogo: string }>(
+          `SELECT id_item_catalogo FROM g3_servicios.receta WHERE id_receta = $1`, [req.params.id]
+        );
+        if (!target.rows[0]) throw new NotFoundError('Receta no encontrada.');
+        await client.query(
+          `UPDATE g3_servicios.receta SET estado = 'reemplazada', vigente_hasta = COALESCE(vigente_hasta, CURRENT_DATE)
+           WHERE id_item_catalogo = $1 AND estado = 'vigente' AND id_receta <> $2`,
+          [target.rows[0].id_item_catalogo, req.params.id]
+        );
+      }
+      const result = await client.query(
+        `UPDATE g3_servicios.receta
+         SET estado = $2, vigente_hasta = CASE WHEN $2 = 'vigente' THEN NULL ELSE COALESCE(vigente_hasta, CURRENT_DATE) END
+         WHERE id_receta = $1
+         RETURNING id_receta, id_item_catalogo, numero_version, estado`,
+        [req.params.id, b.estado]
+      );
+      if (!result.rows[0]) throw new NotFoundError('Receta no encontrada.');
+      return result.rows[0];
+    }))
   );
 
   // ---- Requisiciones de reposición (las crea Housekeeping desde /m2/requisiciones; Almacén las atiende)

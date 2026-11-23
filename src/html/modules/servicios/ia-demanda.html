@@ -10,6 +10,14 @@
     <div data-ref="footer-slot"></div>
   </div>
 
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Historial de recomendaciones generadas</h3>
+    </div>
+    <div class="divide-list" data-ref="recommendations-list"></div>
+    <div data-ref="recommendations-footer"></div>
+  </div>
+
   <div data-ref="advisor-slot"></div>
 </div>
 
@@ -25,5 +33,22 @@
       <div class="text-11 text-slate-500 mt-0.5" data-ref="detail"></div>
     </div>
     <button type="button" class="btn btn-teal btn-xs hidden" data-ref="order-btn">Generar OC sugerida</button>
+  </div>
+</template>
+
+<template data-tpl="fila-recomendacion-ia">
+  <div class="p-4 stack-sm">
+    <div class="row-between">
+      <div>
+        <div class="text-xs font-bold text-navy" data-ref="type"></div>
+        <div class="text-11 text-slate-500" data-ref="meta"></div>
+      </div>
+      <span data-ref="status"></span>
+    </div>
+    <p class="text-xs text-slate-600" data-ref="reason"></p>
+    <div class="row-wrap justify-end hidden" data-ref="decision-actions">
+      <button type="button" class="btn btn-outline-muted btn-xs" data-ref="discard-btn">Descartar</button>
+      <button type="button" class="btn btn-teal btn-xs" data-ref="accept-btn">Aceptar</button>
+    </div>
   </div>
 </template>

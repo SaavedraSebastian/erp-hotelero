@@ -5,6 +5,7 @@ export interface RequestContext {
   requestId: string;
   startedAt: bigint;
   userCode?: string;
+  siteId?: string;
   errorCode?: string;
 }
 
@@ -64,6 +65,7 @@ export function requestContextMiddleware(req: Request, res: Response, next: Next
         level: status >= 500 ? 'error' : status >= 400 ? 'warn' : 'info',
         requestId,
         usuarioInterno: req.ctx?.userCode ?? null,
+        sede: req.ctx?.siteId ?? null,
         modulo: inferModuleFromPath(pathname),
         endpoint: pathname,
         metodo: req.method,

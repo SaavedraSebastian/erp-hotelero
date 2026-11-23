@@ -14,6 +14,7 @@ export async function listCatalogo(client: PoolClient) {
        ic.id_item_catalogo,
        ic.id_punto_venta,
        pv.nombre AS punto_venta_nombre,
+       pv.estado AS punto_venta_estado,
        ic.id_categoria,
        c.nombre AS categoria_nombre,
        ic.nombre,
@@ -31,7 +32,7 @@ export async function listCatalogo(client: PoolClient) {
   );
   // Catálogos de apoyo a los formularios de artículos, ítems y recetas.
   const categoriasRes = await client.query(
-    `SELECT id_categoria, nombre, uso FROM g3_servicios.categoria WHERE estado = 'activo' ORDER BY uso, nombre`
+    `SELECT id_categoria, nombre, uso, estado FROM g3_servicios.categoria ORDER BY uso, nombre`
   );
   const unidadesRes = await client.query(
     `SELECT id_unidad_medida, nombre, simbolo FROM g3_servicios.unidad_medida WHERE estado = 'activo' ORDER BY nombre`
@@ -190,6 +191,43 @@ export async function listConsumos(client: PoolClient, params: PaginationParams)
   return { rows: dataRes.rows, total: Number(countRes.rows[0]?.total ?? 0) };
 }
 
+export async function listSolicitudesServicio(client: PoolClient, params: PaginationParams) {
+  const values: unknown[] = [];
+  const where: string[] = [];
+  pushStatusFilter(values, where, 's.estado', params.status);
+  pushDateRange(values, where, 's.fecha_hora_prevista', params.fromDate, params.toDate);
+  pushSearchFilter(values, where, ['s.numero_solicitud', 'ic.nombre', 'hb.numero', "(hu.nombres || ' ' || hu.apellidos)"], params.search);
+  const clause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
+  const count = await client.query<{ total: string }>(
+    `SELECT COUNT(*)::text AS total
+     FROM g3_servicios.solicitud_servicio s
+     JOIN g3_servicios.item_catalogo ic ON ic.id_item_catalogo = s.id_item_catalogo
+     LEFT JOIN g3_servicios.estadia_externa ee ON ee.id_estadia_externa = s.id_estadia_externa
+     LEFT JOIN g1_reservas.habitacion hb ON hb.id_habitacion::text = ee.id_habitacion_externa
+     LEFT JOIN g1_reservas.huesped hu ON hu.id_huesped::text = ee.id_huesped_externo
+     ${clause}`, values
+  );
+  values.push(params.pageSize, (params.page - 1) * params.pageSize);
+  const rows = await client.query(
+    `SELECT s.numero_solicitud, s.id_estadia_externa, s.id_item_catalogo,
+            ic.nombre AS servicio, s.cantidad_solicitada::text AS cantidad_solicitada,
+            s.cantidad_prestada::text AS cantidad_prestada,
+            s.precio_capturado::text AS precio_capturado,
+            s.fecha_hora_prevista::text AS fecha_hora_prevista,
+            s.estado, s.motivo_cancelacion,
+            hb.numero AS numero_habitacion, (hu.nombres || ' ' || hu.apellidos) AS huesped_nombre
+     FROM g3_servicios.solicitud_servicio s
+     JOIN g3_servicios.item_catalogo ic ON ic.id_item_catalogo = s.id_item_catalogo
+     LEFT JOIN g3_servicios.estadia_externa ee ON ee.id_estadia_externa = s.id_estadia_externa
+     LEFT JOIN g1_reservas.habitacion hb ON hb.id_habitacion::text = ee.id_habitacion_externa
+     LEFT JOIN g1_reservas.huesped hu ON hu.id_huesped::text = ee.id_huesped_externo
+     ${clause}
+     ORDER BY (s.estado = 'solicitada') DESC, s.fecha_hora_prevista ASC NULLS LAST, s.numero_solicitud DESC
+     LIMIT $${values.length - 1} OFFSET $${values.length}`, values
+  );
+  return { rows: rows.rows, total: Number(count.rows[0]?.total ?? 0) };
+}
+
 export async function listInventario(client: PoolClient, params: PaginationParams) {
   const values: unknown[] = [];
   const where: string[] = [];
@@ -218,6 +256,7 @@ export async function listInventario(client: PoolClient, params: PaginationParam
        aa.stock_minimo::text AS stock_minimo,
        aa.estado,
        aa.id_categoria,
+       aa.id_unidad_medida,
        (SELECT l.costo_unitario FROM g3_servicios.lote_articulo l
          WHERE l.id_articulo = aa.id_articulo ORDER BY l.fecha_creacion DESC LIMIT 1)::text AS costo_unitario,
        (SELECT MIN(l.fecha_vencimiento) FROM g3_servicios.lote_articulo l
@@ -236,6 +275,39 @@ export async function listInventario(client: PoolClient, params: PaginationParam
   );
 
   return { rows: res.rows, total: Number(countRes.rows[0]?.total ?? 0) };
+}
+
+export async function listKardex(client: PoolClient, idArticulo: string | null, params: PaginationParams) {
+  const values: unknown[] = [];
+  const where: string[] = [];
+  if (idArticulo) {
+    values.push(idArticulo);
+    where.push(`mi.id_articulo = $${values.length}`);
+  }
+  pushDateRange(values, where, 'mi.fecha_hora', params.fromDate, params.toDate);
+  pushSearchFilter(values, where, ['mi.tipo_movimiento', 'mi.motivo', 'mi.id_origen', 'mi.modulo_origen'], params.search);
+  const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
+  const countRes = await client.query<{ total: string }>(
+    `SELECT COUNT(*)::text AS total FROM g3_servicios.movimiento_inventario mi ${whereClause}`,
+    values
+  );
+  const offset = (params.page - 1) * params.pageSize;
+  values.push(params.pageSize, offset);
+  const dataRes = await client.query(
+    `SELECT mi.id_movimiento, mi.id_articulo, aa.nombre AS articulo,
+            mi.id_lote, mi.tipo_movimiento, mi.cantidad::text AS cantidad,
+            mi.signo, mi.fecha_hora::text AS fecha_hora,
+            mi.saldo_posterior::text AS saldo_posterior, mi.motivo,
+            mi.id_origen, mi.modulo_origen, mi.costo_unitario::text AS costo_unitario,
+            mi.estado_anulacion
+     FROM g3_servicios.movimiento_inventario mi
+     JOIN g3_servicios.articulo_almacen aa ON aa.id_articulo = mi.id_articulo
+     ${whereClause}
+     ORDER BY mi.fecha_hora DESC, mi.id_movimiento DESC
+     LIMIT $${values.length - 1} OFFSET $${values.length}`,
+    values
+  );
+  return { rows: dataRes.rows, total: Number(countRes.rows[0]?.total ?? 0) };
 }
 
 export async function listOrdenesCompra(client: PoolClient, params: PaginationParams) {
@@ -276,6 +348,12 @@ export async function listOrdenesCompra(client: PoolClient, params: PaginationPa
                'id_articulo', d.id_articulo,
                'articulo', aa.nombre,
                'cantidad_solicitada', d.cantidad_solicitada::text,
+               'cantidad_aceptada', COALESCE((
+                 SELECT SUM(dr.cantidad_aceptada)
+                 FROM g3_servicios.detalle_recepcion dr
+                 JOIN g3_servicios.recepcion_compra rc ON rc.id_recepcion = dr.id_recepcion
+                 WHERE dr.id_detalle_orden = d.id_detalle_orden AND rc.estado <> 'anulada'
+               ), 0)::text,
                'precio_referencia', d.precio_referencia_capturado::text
              ) ORDER BY aa.nombre
            )
@@ -284,7 +362,22 @@ export async function listOrdenesCompra(client: PoolClient, params: PaginationPa
            WHERE d.numero_orden = oc.numero_orden
          ),
          '[]'::jsonb
-       ) AS detalles
+       ) AS detalles,
+       COALESCE(
+         (
+           SELECT jsonb_agg(
+             jsonb_build_object(
+               'id_recepcion', rc.id_recepcion,
+               'fecha_hora', rc.fecha_hora::text,
+               'numero_guia_factura', rc.numero_guia_factura,
+               'estado', rc.estado
+             ) ORDER BY rc.fecha_hora DESC
+           )
+           FROM g3_servicios.recepcion_compra rc
+           WHERE rc.numero_orden = oc.numero_orden
+         ),
+         '[]'::jsonb
+       ) AS recepciones
      FROM g3_servicios.orden_compra oc
      JOIN g3_servicios.proveedor p ON p.id_proveedor = oc.id_proveedor
      ${whereClause}

@@ -29,7 +29,7 @@ import { erpStore } from '../core/store.js';
 import { bindPagedContainer } from '../components/paged-view.js';
 import { localPager, resetLocalPager } from '../components/pagination.js';
 import { getPagedList, setActivePagedList } from '../services/paged-list.js';
-import { mapComandaRows, mapConsumoRows, mapPurchaseOrderRows } from '../services/erp-mappers.js';
+import { mapComandaRows, mapConsumoRows, mapDemandRecommendationRows, mapPurchaseOrderRows } from '../services/erp-mappers.js';
 import { TODAY } from '../data/empty-state.js';
 import {
   AccessDeniedCard,
@@ -123,7 +123,7 @@ export function renderServiciosPOSModule() {
     const articles = erpStore.state?.inventory ?? [];
     const initial = editing
       ? { ...editing }
-      : { name: '', posId: cat.posPoints?.[0]?.id || '', categoryId: cat.menuCategories?.[0]?.id || '', itemType: 'plato', price: '', linkedInventoryItemId: '' };
+      : { name: '', posId: cat.posPoints?.find((p) => p.active)?.id || '', categoryId: cat.menuCategories?.find((c) => c.active)?.id || '', itemType: 'plato', price: '', linkedInventoryItemId: '' };
     openModal({
       title: editing ? `Editar Producto · ${editing.name}` : 'Nuevo Producto en Catálogo',
       subtitle: editing ? 'El punto de venta y el tipo no se modifican. Un precio nuevo queda registrado en el historial de precios.' : undefined,
@@ -137,9 +137,9 @@ export function renderServiciosPOSModule() {
         const artSel = getRef(form, 'article');
 
         // Las opciones válidas son las de la base de datos.
-        mount(posSel, (cat.posPoints ?? []).map((p) => h('option', { value: p.id }, p.name)));
-        mount(catSel, (cat.menuCategories ?? []).map((c) => h('option', { value: c.id }, c.name)));
-        mount(artSel, [h('option', { value: '' }, 'Ninguno (se descuenta por receta)'), ...articles.map((a) => h('option', { value: a.id }, `${a.name} (${a.unit})`))]);
+        mount(posSel, (cat.posPoints ?? []).filter((p) => p.active || p.id === editing?.posId).map((p) => h('option', { value: p.id }, p.name)));
+        mount(catSel, (cat.menuCategories ?? []).filter((c) => c.active || c.id === editing?.categoryId).map((c) => h('option', { value: c.id }, c.name)));
+        mount(artSel, [h('option', { value: '' }, 'Ninguno (se descuenta por receta)'), ...articles.filter((a) => a.active || a.id === editing?.linkedInventoryItemId).map((a) => h('option', { value: a.id }, `${a.name} (${a.unit})`))]);
 
         nameIn.value = initial.name || '';
         posSel.value = initial.posId || '';
@@ -173,7 +173,7 @@ export function renderServiciosPOSModule() {
     const cat = erpStore.state?.catalogs ?? {};
     const initial = editing
       ? { ...editing }
-      : { name: '', posId: cat.posPoints?.[0]?.id || '', categoryId: cat.menuCategories?.[0]?.id || '', price: '', durationMinutes: undefined };
+      : { name: '', posId: cat.posPoints?.find((p) => p.active)?.id || '', categoryId: cat.menuCategories?.find((c) => c.active)?.id || '', price: '', durationMinutes: undefined };
     openModal({
       title: editing ? `Editar Servicio · ${editing.name}` : 'Nuevo Servicio Complementario',
       subtitle: editing ? 'El punto de venta no se modifica. Un precio nuevo queda registrado en el historial de precios.' : undefined,
@@ -185,8 +185,8 @@ export function renderServiciosPOSModule() {
         const durIn = getRef(form, 'duration');
         const priceIn = getRef(form, 'price');
 
-        mount(posSel, (cat.posPoints ?? []).map((p) => h('option', { value: p.id }, p.name)));
-        mount(catSel, (cat.menuCategories ?? []).map((c) => h('option', { value: c.id }, c.name)));
+        mount(posSel, (cat.posPoints ?? []).filter((p) => p.active || p.id === editing?.posId).map((p) => h('option', { value: p.id }, p.name)));
+        mount(catSel, (cat.menuCategories ?? []).filter((c) => c.active || c.id === editing?.categoryId).map((c) => h('option', { value: c.id }, c.name)));
 
         nameIn.value = initial.name || '';
         posSel.value = initial.posId || '';
@@ -239,11 +239,11 @@ export function renderServiciosPOSModule() {
     });
   }
 
-  function openInventoryCreateModal() {
+  function openInventoryCreateModal(editingItem = null) {
     const cat = erpStore.state?.catalogs ?? {};
     openModal({
-      title: 'Registrar Nuevo Artículo en Almacén',
-      subtitle: 'Con stock inicial se crea su primer lote y su movimiento en el kardex.',
+      title: editingItem ? `Editar artículo ${editingItem.sku}` : 'Registrar Nuevo Artículo en Almacén',
+      subtitle: editingItem ? 'El stock y costo se modifican mediante movimientos de kardex.' : 'Con stock inicial se crea su primer lote y su movimiento en el kardex.',
       renderBody: (close) => {
         const form = cloneModal('modal-insumo');
         const nameIn = getRef(form, 'name');
@@ -256,8 +256,21 @@ export function renderServiciosPOSModule() {
         const expiryIn = getRef(form, 'expiry');
         const warnIn = getRef(form, 'warn-days');
 
-        mount(catSel, (cat.stockCategories ?? []).map((c) => h('option', { value: c.id }, c.name)));
+        mount(catSel, (cat.stockCategories ?? []).filter((c) => c.active || c.id === editingItem?.categoryId).map((c) => h('option', { value: c.id }, c.name)));
         mount(unitSel, (cat.units ?? []).map((u) => h('option', { value: u.id }, `${u.name} (${u.symbol})`)));
+        if (editingItem) {
+          nameIn.value = editingItem.name;
+          catSel.value = editingItem.categoryId;
+          unitSel.value = editingItem.unitId;
+          minIn.value = String(editingItem.minStock);
+          expiresChk.checked = editingItem.expires;
+          warnIn.value = String(editingItem.warnDays || 0);
+          stockIn.value = '0';
+          stockIn.disabled = true;
+          costIn.value = String(editingItem.unitCost || 0);
+          costIn.disabled = true;
+          expiryIn.disabled = true;
+        }
         const syncExpiry = () => {
           expiryIn.disabled = !expiresChk.checked;
           warnIn.disabled = !expiresChk.checked;
@@ -270,6 +283,7 @@ export function renderServiciosPOSModule() {
           e.preventDefault();
           if (!nameIn.value.trim()) return;
           const res = await erpStore.upsertInventoryItem({
+            id: editingItem?.id,
             name: nameIn.value.trim(),
             categoryId: catSel.value,
             unitId: unitSel.value,
@@ -287,9 +301,9 @@ export function renderServiciosPOSModule() {
     });
   }
 
-  function openSupplierModal() {
+  function openSupplierModal(editingSupplier = null) {
     openModal({
-      title: 'Registrar Nuevo Proveedor',
+      title: editingSupplier ? `Editar proveedor ${editingSupplier.name}` : 'Registrar Nuevo Proveedor',
       renderBody: (close) => {
         const form = cloneModal('modal-proveedor');
         const nameIn = getRef(form, 'name');
@@ -297,11 +311,19 @@ export function renderServiciosPOSModule() {
         const phoneIn = getRef(form, 'phone');
         const emailIn = getRef(form, 'email');
 
+        if (editingSupplier) {
+          nameIn.value = editingSupplier.name;
+          rucIn.value = editingSupplier.ruc;
+          phoneIn.value = editingSupplier.phone;
+          emailIn.value = editingSupplier.email;
+        }
+
         getRef(form, 'cancel-btn')?.addEventListener('click', close);
         form.addEventListener('submit', async (e) => {
           e.preventDefault();
           if (!nameIn.value.trim()) return;
           const res = await erpStore.upsertSupplier({
+            id: editingSupplier?.id,
             name: nameIn.value.trim(),
             ruc: rucIn.value.trim(),
             phone: phoneIn.value.trim(),
@@ -314,15 +336,43 @@ export function renderServiciosPOSModule() {
     });
   }
 
-  function openPurchaseOrderModal(prelinkedReq) {
+  function openSupplierStatusModal(supplier) {
+    if (!supplier.active) {
+      erpStore.setSupplierStatus(supplier.id, true, '');
+      return;
+    }
+    openModal({
+      title: `Desactivar proveedor ${supplier.name}`,
+      subtitle: 'Las órdenes existentes se conservan, pero no debe seleccionarse en nuevas compras.',
+      renderBody: (close) => {
+        const reason = h('textarea', { className: 'input-control', rows: 3, required: true, minlength: 3, placeholder: 'Motivo de desactivación' });
+        const back = h('button', { type: 'button', className: 'btn btn-outline-muted' }, 'Volver');
+        const submit = h('button', { type: 'submit', className: 'btn btn-primary' }, 'Desactivar');
+        const form = h('form', { className: 'stack-md' }, reason, h('div', { className: 'row-wrap justify-end' }, back, submit));
+        back.addEventListener('click', close);
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const result = await erpStore.setSupplierStatus(supplier.id, false, reason.value);
+          if (result?.ok) close();
+        });
+        return form;
+      },
+    });
+  }
+
+  function openPurchaseOrderModal(prelinkedReq, editingOrder = null) {
     const state = erpStore.state;
-    const defaultItem = prelinkedReq
+    const defaultItem = editingOrder?.items?.[0]
+      ? state.inventory.find((i) => i.id === editingOrder.items[0].inventoryItemId) || state.inventory[0]
+      : prelinkedReq
       ? state.inventory.find((i) => i.id === prelinkedReq.inventoryItemId) || state.inventory[0]
       : state.inventory[0];
 
     openModal({
-      title: 'Nueva Orden de Compra a Proveedor',
-      subtitle: prelinkedReq
+      title: editingOrder ? `Editar Orden ${editingOrder.code}` : 'Nueva Orden de Compra a Proveedor',
+      subtitle: editingOrder
+        ? 'Solo las órdenes pendientes de aprobación pueden modificarse.'
+        : prelinkedReq
         ? `Vinculada a Requisición ${prelinkedReq.code}`
         : 'Al recepcionar incrementa stock y genera egreso en Finanzas.',
       renderBody: (close) => {
@@ -332,16 +382,17 @@ export function renderServiciosPOSModule() {
         const qtyIn = getRef(form, 'qty');
         const costIn = getRef(form, 'unit-cost');
 
-        mount(supSel, state.suppliers.map((sup) => h('option', { value: sup.id }, `${sup.name} (${sup.category})`)));
+        mount(supSel, state.suppliers.filter((sup) => sup.active || sup.id === editingOrder?.supplierId).map((sup) => h('option', { value: sup.id }, `${sup.name} (${sup.category})`)));
+        if (editingOrder?.supplierId) supSel.value = editingOrder.supplierId;
         mount(
           itemSel,
-          state.inventory.map((inv) =>
+          state.inventory.filter((inv) => inv.active || inv.id === editingOrder?.items?.[0]?.inventoryItemId).map((inv) =>
             h('option', { value: inv.id, selected: defaultItem?.id === inv.id }, `${inv.name} (Stock: ${inv.stock} ${inv.unit})`)
           )
         );
         if (defaultItem) itemSel.value = defaultItem.id;
-        qtyIn.value = String(prelinkedReq ? prelinkedReq.quantity : Math.max(10, (defaultItem?.minStock || 10) * 2));
-        costIn.value = String(defaultItem?.unitCost || 15);
+        qtyIn.value = String(editingOrder?.items?.[0]?.quantity ?? (prelinkedReq ? prelinkedReq.quantity : Math.max(10, (defaultItem?.minStock || 10) * 2)));
+        costIn.value = String(editingOrder?.items?.[0]?.unitCost ?? defaultItem?.unitCost ?? 15);
 
         itemSel.addEventListener('change', () => {
           const inv = state.inventory.find((i) => i.id === itemSel.value);
@@ -349,21 +400,235 @@ export function renderServiciosPOSModule() {
         });
 
         getRef(form, 'cancel-btn')?.addEventListener('click', close);
-        form.addEventListener('submit', (e) => {
+        form.addEventListener('submit', async (e) => {
           e.preventDefault();
           const item = state.inventory.find((i) => i.id === itemSel.value);
           if (!item) return;
-          erpStore.createPurchaseOrder({
+          const payload = {
             supplierId: supSel.value,
             linkedRequisitionId: prelinkedReq?.id,
+            deliveryExpected: editingOrder?.deliveryExpected,
             items: [{
               inventoryItemId: item.id,
               itemName: item.name,
               quantity: Number(qtyIn.value),
               unitCost: Number(costIn.value),
             }],
-          });
-          close();
+          };
+          const result = editingOrder
+            ? await erpStore.updatePurchaseOrder(editingOrder.id, payload)
+            : await erpStore.createPurchaseOrder(payload);
+          if (result?.ok) close();
+        });
+        return form;
+      },
+    });
+  }
+
+  function openPurchaseReasonModal(order, action) {
+    const labels = {
+      aprobar: ['Aprobar orden', 'Motivo o sustento de aprobación'],
+      rechazar: ['Rechazar orden', 'Motivo del rechazo'],
+      cancelar: ['Cancelar orden', 'Motivo de cancelación'],
+      anularRecepcion: ['Anular recepción', 'Motivo de anulación y reversión de stock'],
+    };
+    const [title, placeholder] = labels[action];
+    openModal({
+      title: `${title} ${order.code}`,
+      subtitle: action === 'aprobar' ? 'La aprobación respeta la segregación de funciones configurada.' : undefined,
+      renderBody: (close) => {
+        const reason = h('textarea', { className: 'input-control', rows: 3, required: true, minlength: 3, placeholder });
+        const back = h('button', { type: 'button', className: 'btn btn-outline-muted' }, 'Volver');
+        const submit = h('button', { type: 'submit', className: action === 'aprobar' ? 'btn btn-teal' : 'btn btn-primary' }, title);
+        const form = h('form', { className: 'stack-md' }, reason, h('div', { className: 'row-wrap justify-end' }, back, submit));
+        back.addEventListener('click', close);
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const value = reason.value.trim();
+          const receipt = order.receipts?.find((r) => r.rawStatus !== 'anulada');
+          const result = action === 'cancelar'
+            ? await erpStore.cancelPurchaseOrder(order.id, value)
+            : action === 'anularRecepcion' && receipt
+              ? await erpStore.annulPurchaseReceipt(order.id, receipt.id, value)
+              : await erpStore.decidePurchaseOrder(order.id, action, value);
+          if (result?.ok) close();
+        });
+        return form;
+      },
+    });
+  }
+
+  function openPurchaseReceiptModal(order) {
+    const pendingItems = order.items.filter((item) => item.pendingQuantity > 0);
+    openModal({
+      title: `Recepcionar ${order.code}`,
+      subtitle: 'Puedes aceptar una parte y registrar otra recepción posteriormente.',
+      renderBody: (close) => {
+        const documentNumber = h('input', { className: 'input-control font-mono', maxlength: 30, placeholder: 'Guía o factura (opcional)' });
+        const controls = pendingItems.map((item) => {
+          const accepted = h('input', { type: 'number', min: 0, max: item.pendingQuantity, step: '0.001', value: item.pendingQuantity, className: 'input-control font-mono' });
+          const rejected = h('input', { type: 'number', min: 0, max: item.pendingQuantity, step: '0.001', value: 0, className: 'input-control font-mono' });
+          const cost = h('input', { type: 'number', min: 0, step: '0.01', value: item.unitCost, className: 'input-control font-mono' });
+          const reason = h('input', { className: 'input-control', maxlength: 500, placeholder: 'Motivo del rechazo, si aplica' });
+          const expiry = h('input', { type: 'date', className: 'input-control font-mono' });
+          const row = h('div', { className: 'card card-pad stack-sm' },
+            h('div', { className: 'row-between' }, h('strong', null, item.itemName), h('span', { className: 'text-11 text-slate-500' }, `Pendiente: ${item.pendingQuantity}`)),
+            h('div', { className: 'grid-2' },
+              h('div', null, h('label', { className: 'field-label' }, 'Aceptada'), accepted),
+              h('div', null, h('label', { className: 'field-label' }, 'Rechazada'), rejected),
+              h('div', null, h('label', { className: 'field-label' }, 'Costo unitario'), cost),
+              h('div', null, h('label', { className: 'field-label' }, 'Vencimiento (opcional)'), expiry)
+            ), reason
+          );
+          return { item, accepted, rejected, cost, reason, expiry, row };
+        });
+        const back = h('button', { type: 'button', className: 'btn btn-outline-muted' }, 'Cancelar');
+        const submit = h('button', { type: 'submit', className: 'btn btn-teal' }, 'Registrar recepción');
+        const form = h('form', { className: 'stack-md' },
+          h('div', null, h('label', { className: 'field-label' }, 'Documento'), documentNumber),
+          ...controls.map((control) => control.row),
+          h('div', { className: 'row-wrap justify-end' }, back, submit)
+        );
+        back.addEventListener('click', close);
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const items = controls.map((control) => ({
+            id: control.item.id,
+            accepted: Number(control.accepted.value || 0),
+            rejected: Number(control.rejected.value || 0),
+            rejectionReason: control.reason.value.trim(),
+            unitCost: Number(control.cost.value || 0),
+            expiryDate: control.expiry.value || null,
+          })).filter((item) => item.accepted + item.rejected > 0);
+          const invalid = items.find((item) => item.rejected > 0 && item.rejectionReason.length < 3);
+          if (invalid) {
+            invalid.rejectionReason = '';
+            return;
+          }
+          const result = await erpStore.receivePurchaseOrder(order.id, { documentNumber: documentNumber.value.trim(), items });
+          if (result?.ok) close();
+        });
+        return form;
+      },
+    });
+  }
+
+  function openDemandRecommendationDecisionModal(recommendation, decision) {
+    const accepting = decision === 'aceptada';
+    openModal({
+      title: `${accepting ? 'Aceptar' : 'Descartar'} recomendación`,
+      subtitle: recommendation.type,
+      renderBody: (close) => {
+        const comment = h('textarea', {
+          className: 'input-control', rows: 3, maxlength: 500,
+          placeholder: accepting ? 'Comentario de aceptación (opcional)' : 'Explica por qué se descarta (opcional)',
+        });
+        const back = h('button', { type: 'button', className: 'btn btn-outline-muted' }, 'Volver');
+        const submit = h('button', { type: 'submit', className: accepting ? 'btn btn-teal' : 'btn btn-primary' }, accepting ? 'Aceptar' : 'Descartar');
+        const form = h('form', { className: 'stack-md' },
+          h('p', { className: 'text-xs text-slate-600' }, recommendation.reason),
+          comment,
+          h('div', { className: 'row-wrap justify-end' }, back, submit)
+        );
+        back.addEventListener('click', close);
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const result = await erpStore.decideDemandRecommendation(recommendation.id, decision, comment.value);
+          if (result?.ok) {
+            getPagedList('m3.ia-recomendaciones', { path: '/ai/demanda/recomendaciones', map: mapDemandRecommendationRows, pageSize: 10 }).reload();
+            close();
+          }
+        });
+        return form;
+      },
+    });
+  }
+
+  function openM3ManagerModal(kind, categoryUse = 'catálogo') {
+    const state = erpStore.state;
+    const definitions = {
+      point: {
+        title: 'Gestionar puntos de venta',
+        entries: state.catalogs?.posPoints ?? [],
+        label: 'Punto de venta',
+      },
+      category: {
+        title: `Gestionar categorías de ${categoryUse}`,
+        entries: categoryUse === 'almacén' ? state.catalogs?.stockCategories ?? [] : state.catalogs?.menuCategories ?? [],
+        label: 'Categoría',
+      },
+      table: {
+        title: 'Gestionar mesas',
+        entries: state.tables ?? [],
+        label: 'Mesa',
+      },
+    };
+    const definition = definitions[kind];
+    openModal({
+      title: definition.title,
+      subtitle: 'Selecciona un registro para editarlo o elige “Nuevo”.',
+      renderBody: (close) => {
+        const record = h('select', { className: 'select-control' },
+          h('option', { value: '' }, `Nuevo ${definition.label.toLowerCase()}`),
+          ...definition.entries.map((entry) => h('option', { value: entry.id }, entry.name || entry.rawName || entry.number))
+        );
+        const name = h('input', { className: 'input-control', required: true, minlength: kind === 'table' ? 1 : 2, placeholder: `Nombre del ${definition.label.toLowerCase()}` });
+        const type = h('input', { className: 'input-control', minlength: 3, placeholder: 'Tipo: restaurante, bar, minibar…' });
+        const pos = h('select', { className: 'select-control' },
+          ...(state.catalogs?.posPoints ?? []).filter((point) => point.active).map((point) => h('option', { value: point.id }, point.name))
+        );
+        const reason = h('input', { className: 'input-control', minlength: 3, placeholder: 'Motivo para desactivar la mesa' });
+        const statusButton = h('button', { type: 'button', className: 'btn btn-outline-muted hidden' }, 'Desactivar');
+        const cancel = h('button', { type: 'button', className: 'btn btn-outline-muted' }, 'Cerrar');
+        const save = h('button', { type: 'submit', className: 'btn btn-primary' }, 'Guardar');
+
+        const selected = () => definition.entries.find((entry) => entry.id === record.value);
+        const sync = () => {
+          const entry = selected();
+          name.value = entry?.name || entry?.rawName || '';
+          if (kind === 'point') type.value = entry?.type || '';
+          if (kind === 'table') {
+            pos.value = entry?.posId || pos.options[0]?.value || '';
+            pos.disabled = Boolean(entry);
+          }
+          const active = kind === 'table' ? entry?.status !== 'Inactiva' : entry?.active !== false;
+          statusButton.textContent = active ? 'Desactivar' : 'Activar';
+          statusButton.classList.toggle('hidden', !entry);
+          reason.classList.toggle('hidden', kind !== 'table' || !entry || !active);
+        };
+        record.addEventListener('change', sync);
+        sync();
+
+        const fields = [
+          h('div', null, h('label', { className: 'field-label' }, definition.label), record),
+          h('div', null, h('label', { className: 'field-label' }, 'Nombre'), name),
+        ];
+        if (kind === 'point') fields.push(h('div', null, h('label', { className: 'field-label' }, 'Tipo'), type));
+        if (kind === 'table') fields.push(h('div', null, h('label', { className: 'field-label' }, 'Punto de venta'), pos), reason);
+        const form = h('form', { className: 'stack-md' }, ...fields,
+          h('div', { className: 'row-between pt-2' }, statusButton, h('div', { className: 'row-wrap' }, cancel, save))
+        );
+        cancel.addEventListener('click', close);
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const entry = selected();
+          const result = kind === 'point'
+            ? await erpStore.upsertPointOfSale({ id: entry?.id, name: name.value, type: type.value })
+            : kind === 'category'
+              ? await erpStore.upsertM3Category({ id: entry?.id, name: name.value, use: categoryUse })
+              : await erpStore.upsertTable({ id: entry?.id, name: name.value, posId: pos.value });
+          if (result?.ok) close();
+        });
+        statusButton.addEventListener('click', async () => {
+          const entry = selected();
+          if (!entry) return;
+          const active = kind === 'table' ? entry.status !== 'Inactiva' : entry.active !== false;
+          const result = kind === 'point'
+            ? await erpStore.setPointOfSaleStatus(entry.id, !active)
+            : kind === 'category'
+              ? await erpStore.setM3CategoryStatus(entry.id, !active)
+              : await erpStore.updateTableStatus(entry.id, active ? 'Inactiva' : 'Activa', reason.value);
+          if (result?.ok) close();
         });
         return form;
       },
@@ -413,6 +678,93 @@ export function renderServiciosPOSModule() {
     });
   }
 
+  function openServiceRequestCompleteModal(request) {
+    openModal({
+      title: `Completar solicitud ${request.id}`,
+      subtitle: `${request.service} · Hab. ${request.roomNumber || '—'}`,
+      renderBody: (close) => {
+        const qty = h('input', {
+          type: 'number', min: 1, max: request.requestedQuantity,
+          value: request.requestedQuantity, className: 'input-control font-mono',
+        });
+        const payment = h('select', { className: 'select-control' },
+          h('option', { value: 'Cargo a Habitación' }, 'Cargo a Habitación'),
+          h('option', { value: 'Pago Directo' }, 'Pago Directo')
+        );
+        const cancel = h('button', { type: 'button', className: 'btn btn-outline-muted' }, 'Cancelar');
+        const submit = h('button', { type: 'submit', className: 'btn btn-teal' }, 'Completar y generar consumo');
+        const form = h('form', { className: 'stack-md' },
+          h('div', null, h('label', { className: 'field-label' }, 'Cantidad prestada'), qty),
+          h('div', null, h('label', { className: 'field-label' }, 'Forma de cobro'), payment),
+          h('div', { className: 'row-wrap justify-end pt-2' }, cancel, submit)
+        );
+        cancel.addEventListener('click', close);
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const result = await erpStore.completeServiceRequest(request, {
+            quantity: Number(qty.value), paymentMode: payment.value,
+          });
+          if (result?.ok) close();
+        });
+        return form;
+      },
+    });
+  }
+
+  function openServiceRequestCancelModal(request) {
+    openModal({
+      title: `Cancelar solicitud ${request.id}`,
+      subtitle: 'La solicitud no generará ningún consumo.',
+      renderBody: (close) => {
+        const motivo = h('textarea', { className: 'input-control', rows: 3, placeholder: 'Motivo de cancelación' });
+        const cancel = h('button', { type: 'button', className: 'btn btn-outline-muted' }, 'Volver');
+        const submit = h('button', { type: 'submit', className: 'btn btn-danger' }, 'Confirmar cancelación');
+        const form = h('form', { className: 'stack-md' },
+          h('div', null, h('label', { className: 'field-label' }, 'Motivo'), motivo),
+          h('div', { className: 'row-wrap justify-end pt-2' }, cancel, submit)
+        );
+        cancel.addEventListener('click', close);
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          if (motivo.value.trim().length < 3) return;
+          const result = await erpStore.cancelServiceRequest(request.id, motivo.value.trim());
+          if (result?.ok) close();
+        });
+        return form;
+      },
+    });
+  }
+
+  function openConsumptionReasonModal(consumption, action) {
+    const isAnnul = action === 'anular';
+    openModal({
+      title: `${isAnnul ? 'Anular' : 'Descartar'} consumo ${consumption.code}`,
+      subtitle: isAnnul
+        ? 'Se conservará la trazabilidad y se revertirá el movimiento de inventario asociado.'
+        : 'El consumo pendiente no se confirmará ni afectará el inventario.',
+      renderBody: (close) => {
+        const reason = h('textarea', { className: 'input-control', rows: 3, placeholder: 'Indica el motivo' });
+        const back = h('button', { type: 'button', className: 'btn btn-outline-muted' }, 'Volver');
+        const submit = h('button', { type: 'submit', className: 'btn btn-danger' }, isAnnul ? 'Confirmar anulación' : 'Confirmar descarte');
+        const form = h('form', { className: 'stack-md' },
+          h('div', null, h('label', { className: 'field-label' }, 'Motivo'), reason),
+          h('div', { className: 'row-wrap justify-end pt-2' }, back, submit)
+        );
+        back.addEventListener('click', close);
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const motivo = reason.value.trim();
+          if (motivo.length < 3) return;
+          const result = isAnnul
+            ? await erpStore.annulConsumption(consumption.id, motivo)
+            : await erpStore.discardConsumption(consumption.id, motivo);
+          if (result?.ok) close();
+        });
+        return form;
+      },
+    });
+  }
+
   function isExpiringSoon(dateStr) {
     if (!dateStr) return false;
     const base = new Date(`${TODAY}T00:00:00`).getTime();
@@ -440,8 +792,8 @@ export function renderServiciosPOSModule() {
     if (!m3Ui.posFolioId && openFolios.length > 0) m3Ui.posFolioId = openFolios[0].id;
     const occupiedRooms = state.rooms.filter((r) => r.commercialStatus === 'Ocupada');
 
-    const lowStockItems = state.inventory.filter((i) => i.stock <= i.minStock);
-    const expiringItems = state.inventory.filter((i) => isExpiringSoon(i.expiryDate));
+    const lowStockItems = state.inventory.filter((i) => i.active && i.stock <= i.minStock);
+    const expiringItems = state.inventory.filter((i) => i.active && isExpiringSoon(i.expiryDate));
     const pendingReqs = state.supplyRequisitions.filter((r) => r.status === 'Solicitada');
 
     let tabBody = null;
@@ -456,9 +808,11 @@ export function renderServiciosPOSModule() {
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.productos);
       tabBody = view;
       setVisible(tabBody, 'new-btn', canEditCurrentTab);
+      setVisible(tabBody, 'manage-categories-btn', canEditCurrentTab);
       if (canEditCurrentTab) {
         mountRef(tabBody, 'new-icon', icon('plus', 'w-3.5'));
         getRef(tabBody, 'new-btn').addEventListener('click', () => openProductModal(null));
+        getRef(tabBody, 'manage-categories-btn').addEventListener('click', () => openM3ManagerModal('category', 'catálogo'));
       }
 
       const catFilter = getRef(tabBody, 'cat-filter');
@@ -521,9 +875,11 @@ export function renderServiciosPOSModule() {
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.servicios);
       tabBody = view;
       setVisible(tabBody, 'new-btn', canEditCurrentTab);
+      setVisible(tabBody, 'manage-categories-btn', canEditCurrentTab);
       if (canEditCurrentTab) {
         mountRef(tabBody, 'new-icon', icon('plus', 'w-3.5'));
         getRef(tabBody, 'new-btn').addEventListener('click', () => openServiceModal(null));
+        getRef(tabBody, 'manage-categories-btn').addEventListener('click', () => openM3ManagerModal('category', 'catálogo'));
       }
       const servicesPager = localPager('m3.servicios', state.services, renderContent, 10);
       mountRef(
@@ -560,6 +916,10 @@ export function renderServiciosPOSModule() {
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.pos);
       tabBody = view;
       mountRef(tabBody, 'cart-icon', icon('shoppingCart', 'w-4 text-teal'));
+      setVisible(tabBody, 'manage-pos-btn', canEditCurrentTab);
+      if (canEditCurrentTab) {
+        getRef(tabBody, 'manage-pos-btn').addEventListener('click', () => openM3ManagerModal('point'));
+      }
 
       const catGroup = getRef(tabBody, 'categories');
       catGroup.querySelectorAll('button[data-cat]').forEach((btn) => {
@@ -685,10 +1045,49 @@ export function renderServiciosPOSModule() {
           }
         });
       }
+
+      const renderConsumptionHistory = (rows) => rows.map((consumption) => {
+        const row = clone('fila-historial-consumo');
+        setText(row, 'title', `${consumption.code} · ${consumption.source || 'POS'}${consumption.roomNumber ? ` · Hab. ${consumption.roomNumber}` : ''}`);
+        setText(row, 'items', consumption.items.map((item) => `${item.quantity}x ${item.name}`).join(', ') || 'Sin detalle');
+        setText(row, 'meta', `${consumption.paymentMode || 'Forma de cobro no indicada'}${consumption.guestName ? ` · ${consumption.guestName}` : ''} · ${consumption.createdAt || ''}`);
+        setText(row, 'total', formatCurrency(consumption.total));
+        mountRef(row, 'status', StatusText({ label: consumption.status, variant: getStatusVariant(consumption.status) }));
+        const pending = consumption.rawStatus === 'por confirmar';
+        const confirmed = consumption.rawStatus === 'confirmado';
+        setVisible(row, 'confirm-btn', canEditCurrentTab && pending);
+        setVisible(row, 'discard-btn', canEditCurrentTab && pending);
+        setVisible(row, 'annul-btn', canEditCurrentTab && confirmed);
+        if (canEditCurrentTab && pending) {
+          getRef(row, 'confirm-btn').addEventListener('click', () => erpStore.confirmConsumption(consumption.id));
+          getRef(row, 'discard-btn').addEventListener('click', () => openConsumptionReasonModal(consumption, 'descartar'));
+        }
+        if (canEditCurrentTab && confirmed) {
+          getRef(row, 'annul-btn').addEventListener('click', () => openConsumptionReasonModal(consumption, 'anular'));
+        }
+        return row;
+      });
+      bindPagedContainer({
+        key: 'm3.historial-consumos',
+        container: getRef(tabBody, 'consumption-history'),
+        list: getPagedList('m3.historial-consumos', { path: '/m3/consumos', map: mapConsumoRows, pageSize: 10 }),
+        filters: {
+          searchPlaceholder: 'Buscar consumo, punto de venta, habitación o huésped…',
+          statuses: ['por confirmar', 'confirmado', 'descartado', 'anulado'],
+          dates: true,
+        },
+        renderBody: renderConsumptionHistory,
+        empty: { iconName: 'receipt', title: 'Sin consumos', description: 'Todavía no hay consumos registrados.' },
+        noMatch: { iconName: 'search', title: 'Sin consumos coincidentes', description: 'Prueba con otros filtros.' },
+      });
     } else if (activeTab === 'restaurante') {
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.restaurante);
       tabBody = view;
       mountRef(tabBody, 'monitor-icon', icon('chefHat', 'w-4 text-teal'));
+      setVisible(tabBody, 'manage-tables-btn', canEditCurrentTab);
+      if (canEditCurrentTab) {
+        getRef(tabBody, 'manage-tables-btn').addEventListener('click', () => openM3ManagerModal('table'));
+      }
 
       const tablesPager = localPager('m3.restaurante.mesas', state.tables, renderContent, 10);
       mountRef(
@@ -901,8 +1300,9 @@ export function renderServiciosPOSModule() {
 
       const form = getRef(tabBody, 'srv-form');
       const srvSel = getRef(tabBody, 'service-select');
-      const paySel = getRef(tabBody, 'payment-mode');
       const roomSel = getRef(tabBody, 'room-select');
+      const qtyIn = getRef(tabBody, 'quantity');
+      const scheduledIn = getRef(tabBody, 'scheduled-at');
       const activeServices = state.services.filter((s) => s.active !== false);
 
       mount(
@@ -915,22 +1315,21 @@ export function renderServiciosPOSModule() {
           ? h('option', { value: '' }, 'Sin habitaciones ocupadas')
           : occupiedRooms.map((r) => h('option', { value: r.id }, `Hab. ${r.number}`))
       );
-      paySel.addEventListener('change', () => {
-        setVisible(tabBody, 'room-wrap', paySel.value === 'Cargo a Habitación');
-      });
-
-      setVisible(tabBody, 'submit-btn', canEditCurrentTab && activeServices.length > 0);
+      setVisible(tabBody, 'submit-btn', canEditCurrentTab && activeServices.length > 0 && occupiedRooms.length > 0);
       if (canEditCurrentTab) {
-        form.addEventListener('submit', (e) => {
+        form.addEventListener('submit', async (e) => {
           e.preventDefault();
           const srv = activeServices.find((s) => s.id === srvSel.value);
-          if (!srv) return;
-          erpStore.createPOSOrder({
-            source: 'Servicios Complementarios',
-            roomId: paySel.value === 'Cargo a Habitación' ? roomSel.value : undefined,
-            paymentMode: paySel.value === 'Pago Directo' ? 'Pago Directo' : 'Cargo a Habitación',
-            items: [{ id: srv.id, name: srv.name, quantity: 1, unitPrice: srv.price }],
+          const room = occupiedRooms.find((r) => r.id === roomSel.value);
+          if (!srv || !room) return;
+          const result = await erpStore.createServiceRequest({
+            serviceId: srv.id,
+            roomId: room.id,
+            roomNumber: room.number,
+            quantity: Math.max(1, Number(qtyIn.value || 1)),
+            scheduledAt: scheduledIn.value || undefined,
           });
+          if (result?.ok) form.reset();
         });
       }
 
@@ -948,6 +1347,55 @@ export function renderServiciosPOSModule() {
         })
       );
       mountRef(tabBody, 'services-footer', servicesCompPager.footer);
+
+      const requestStatus = {
+        solicitada: 'Solicitada',
+        'en atención': 'En atención',
+        completada: 'Completada',
+        cancelada: 'Cancelada',
+      };
+      bindPagedContainer({
+        key: 'm3.solicitudes-servicio',
+        container: getRef(tabBody, 'requests-list'),
+        list: getPagedList('m3.solicitudes-servicio', {
+          path: '/m3/solicitudes-servicio',
+          pageSize: 10,
+          map: (rows) => rows.map((row) => ({
+            id: row.numero_solicitud,
+            stayId: row.id_estadia_externa,
+            service: row.servicio,
+            roomNumber: row.numero_habitacion,
+            guestName: row.huesped_nombre,
+            requestedQuantity: Number(row.cantidad_solicitada || 0),
+            scheduledAt: row.fecha_hora_prevista,
+            rawStatus: row.estado,
+            status: requestStatus[row.estado] || row.estado,
+          })),
+        }),
+        filters: {
+          searchPlaceholder: 'Buscar solicitud, servicio, habitación o huésped…',
+          statuses: ['solicitada', 'en atención', 'completada', 'cancelada'],
+          dates: true,
+        },
+        renderBody: (rows) => rows.map((request) => {
+          const row = clone('fila-solicitud-servicio');
+          setText(row, 'title', `${request.id} · ${request.service}`);
+          setText(row, 'meta', `Hab. ${request.roomNumber || '—'} · ${request.guestName || 'Huésped'} · Cant. ${request.requestedQuantity}${request.scheduledAt ? ` · ${request.scheduledAt}` : ''}`);
+          mountRef(row, 'status', StatusText({ label: request.status, variant: getStatusVariant(request.status) }));
+          const canStart = canEditCurrentTab && request.rawStatus === 'solicitada';
+          const canComplete = canEditCurrentTab && request.rawStatus === 'en atención';
+          const canCancel = canEditCurrentTab && ['solicitada', 'en atención'].includes(request.rawStatus);
+          setVisible(row, 'start-btn', canStart);
+          setVisible(row, 'complete-btn', canComplete);
+          setVisible(row, 'cancel-btn', canCancel);
+          if (canStart) getRef(row, 'start-btn').addEventListener('click', () => erpStore.startServiceRequest(request.id));
+          if (canComplete) getRef(row, 'complete-btn').addEventListener('click', () => openServiceRequestCompleteModal(request));
+          if (canCancel) getRef(row, 'cancel-btn').addEventListener('click', () => openServiceRequestCancelModal(request));
+          return row;
+        }),
+        empty: { iconName: 'clipboardList', title: 'Sin solicitudes', description: 'No hay solicitudes de servicios registradas.' },
+        noMatch: { iconName: 'search', title: 'Sin solicitudes coincidentes', description: 'Prueba con otros filtros.' },
+      });
     } else if (activeTab === 'inventario') {
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.inventario);
       tabBody = view;
@@ -1027,11 +1475,18 @@ export function renderServiciosPOSModule() {
                 expEl.textContent = item.expiryDate;
               }
             }
-            mountRef(row, 'status', StatusText({ label: low ? 'Reponer' : 'Óptimo', variant: low ? 'danger' : 'success' }));
+            mountRef(row, 'status', StatusText({
+              label: !item.active ? 'Inactivo' : low ? 'Reponer' : 'Óptimo',
+              variant: !item.active ? 'muted' : low ? 'danger' : 'success',
+            }));
             setVisible(row, 'action-cell', canEditCurrentTab);
             if (canEditCurrentTab) {
               mountRef(row, 'adjust-icon', icon('arrowDownUp', 'w-3'));
-              getRef(row, 'adjust-btn').addEventListener('click', () => openInventoryMoveModal(item));
+              setVisible(row, 'adjust-btn', item.active);
+              if (item.active) getRef(row, 'adjust-btn').addEventListener('click', () => openInventoryMoveModal(item));
+              getRef(row, 'edit-btn').addEventListener('click', () => openInventoryCreateModal(item));
+              setText(row, 'status-btn', item.active ? 'Desactivar' : 'Activar');
+              getRef(row, 'status-btn').addEventListener('click', () => erpStore.setInventoryItemStatus(item.id, !item.active));
             }
             return row;
           })
@@ -1054,17 +1509,32 @@ export function renderServiciosPOSModule() {
         })
       );
       setVisible(tabBody, 'new-item-btn', canEditCurrentTab);
+      setVisible(tabBody, 'manage-categories-btn', canEditCurrentTab);
       if (canEditCurrentTab) {
         mountRef(tabBody, 'new-item-icon', icon('packagePlus', 'w-3.5'));
         getRef(tabBody, 'new-item-btn').addEventListener('click', openInventoryCreateModal);
+        getRef(tabBody, 'manage-categories-btn').addEventListener('click', () => openM3ManagerModal('category', 'almacén'));
       }
       renderInvRows();
 
-      const kardexPager = localPager('m3.inventario.kardex', state.inventoryMovements, renderContent, 10);
-      mountRef(
-        tabBody,
-        'kardex-list',
-        kardexPager.slice.map((mv) => {
+      const kardexList = getPagedList('m3.inventario.kardex', {
+        path: '/m3/inventario/kardex',
+        pageSize: 10,
+        map: (rows) => rows.map((mv) => ({
+          id: mv.id_movimiento,
+          type: mv.tipo_movimiento,
+          itemName: mv.articulo,
+          reference: mv.id_origen || mv.id_lote || 'Sin referencia',
+          quantity: (mv.signo === 'salida' ? -1 : 1) * Number(mv.cantidad || 0),
+          date: mv.fecha_hora,
+        })),
+      });
+      bindPagedContainer({
+        key: 'm3.inventario.kardex',
+        list: kardexList,
+        container: getRef(tabBody, 'kardex-list'),
+        filters: { searchPlaceholder: 'Buscar tipo, motivo o referencia…', showDates: true },
+        renderBody: (rows) => rows.map((mv) => {
           const row = clone('fila-kardex');
           setText(row, 'title', `${mv.type} · ${mv.itemName}`);
           setText(row, 'ref', `(${mv.reference})`);
@@ -1074,9 +1544,11 @@ export function renderServiciosPOSModule() {
           qtyEl.classList.add(numQty < 0 ? 'text-danger' : 'text-teal');
           setText(row, 'date', mv.date);
           return row;
-        })
-      );
-      mountRef(tabBody, 'kardex-footer', kardexPager.footer);
+        }),
+        empty: { iconName: 'clipboardList', title: 'Sin movimientos', description: 'No hay movimientos de inventario registrados.' },
+        noMatch: { iconName: 'search', title: 'Sin movimientos coincidentes', description: 'Prueba con otra búsqueda o rango de fechas.' },
+      });
+      mountRef(tabBody, 'kardex-footer', null);
     } else if (activeTab === 'proveedores') {
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.proveedores);
       tabBody = view;
@@ -1100,14 +1572,34 @@ export function renderServiciosPOSModule() {
           setText(row, 'items', po.items.map((i) => `${i.quantity} ${i.itemName}`).join(', '));
           setText(row, 'total', formatCurrency(po.total));
           mountRef(row, 'status', StatusText({ label: po.status, variant: getStatusVariant(po.status) }));
-          const showReceive = canEditCurrentTab && ['Aprobada', 'Enviada', 'Parcialmente recibida'].includes(po.status);
+          const isPending = po.rawStatus === 'pendiente de aprobación';
+          const showReceive = canEditCurrentTab && ['enviada', 'parcialmente recibida'].includes(po.rawStatus);
+          setVisible(row, 'edit-btn', canEditCurrentTab && isPending);
+          setVisible(row, 'approve-btn', canEditCurrentTab && isPending);
+          setVisible(row, 'reject-btn', canEditCurrentTab && isPending);
+          setVisible(row, 'cancel-btn', canEditCurrentTab && isPending);
+          setVisible(row, 'send-btn', canEditCurrentTab && po.rawStatus === 'aprobada');
           setVisible(row, 'receive-btn', showReceive);
+          const activeReceipt = po.receipts?.find((receipt) => receipt.rawStatus !== 'anulada');
+          setVisible(row, 'annul-receipt-btn', canEditCurrentTab && Boolean(activeReceipt));
+          if (isPending && canEditCurrentTab) {
+            getRef(row, 'edit-btn').addEventListener('click', () => openPurchaseOrderModal(null, po));
+            getRef(row, 'approve-btn').addEventListener('click', () => openPurchaseReasonModal(po, 'aprobar'));
+            getRef(row, 'reject-btn').addEventListener('click', () => openPurchaseReasonModal(po, 'rechazar'));
+            getRef(row, 'cancel-btn').addEventListener('click', () => openPurchaseReasonModal(po, 'cancelar'));
+          }
+          if (po.rawStatus === 'aprobada' && canEditCurrentTab) {
+            getRef(row, 'send-btn').addEventListener('click', () => erpStore.sendPurchaseOrder(po.id, 'correo'));
+          }
           if (showReceive) {
             mountRef(row, 'receive-icon', icon('packageCheck', 'w-3'));
-            getRef(row, 'receive-btn').addEventListener('click', () => erpStore.receivePurchaseOrder(po.id));
+            getRef(row, 'receive-btn').addEventListener('click', () => openPurchaseReceiptModal(po));
           } else if (po.receivedAt || po.status === 'Recibida') {
             setText(row, 'received-at', po.receivedAt || po.createdAt);
             setVisible(row, 'received-at', true);
+          }
+          if (activeReceipt && canEditCurrentTab) {
+            getRef(row, 'annul-receipt-btn').addEventListener('click', () => openPurchaseReasonModal(po, 'anularRecepcion'));
           }
           return row;
         })());
@@ -1145,6 +1637,13 @@ export function renderServiciosPOSModule() {
           setText(card, 'rating', sup.rating == null ? 'Sin calificación' : `★ ${sup.rating}`);
           setText(card, 'ruc-cat', `RUC ${sup.ruc || '—'} · ${sup.category || '—'}`);
           setText(card, 'contact', `Contacto: ${sup.contactName || '—'} · ${sup.phone || '—'} · Entrega: ${sup.leadTimeDays > 0 ? `${sup.leadTimeDays} día(s)` : '—'}`);
+          setVisible(card, 'edit-btn', canEditCurrentTab);
+          setVisible(card, 'status-btn', canEditCurrentTab);
+          if (canEditCurrentTab) {
+            setText(card, 'status-btn', sup.active ? 'Desactivar' : 'Activar');
+            getRef(card, 'edit-btn').addEventListener('click', () => openSupplierModal(sup));
+            getRef(card, 'status-btn').addEventListener('click', () => openSupplierStatusModal(sup));
+          }
           return card;
         })
       );
@@ -1165,6 +1664,7 @@ export function renderServiciosPOSModule() {
         recipesPager.slice.map((rec) => {
           const card = clone('card-receta');
           setText(card, 'name', rec.productName);
+          setText(card, 'version', `V${rec.version} · ${rec.status}`);
           mountRef(
             card,
             'ingredients',
@@ -1175,12 +1675,17 @@ export function renderServiciosPOSModule() {
               return row;
             })
           );
+          setVisible(card, 'disable-btn', canEditCurrentTab && rec.rawStatus === 'vigente');
+          if (canEditCurrentTab && rec.rawStatus === 'vigente') {
+            getRef(card, 'disable-btn').addEventListener('click', () => erpStore.setRecipeStatus(rec.id, 'inactiva'));
+          }
           return card;
         })
       );
       mountRef(tabBody, 'footer-slot', recipesPager.footer);
     } else if (activeTab === 'ia_demanda') {
-      const supById = new Map(state.suppliers.map((s) => [s.id, s]));
+      const activeSuppliers = state.suppliers.filter((supplier) => supplier.active);
+      const supById = new Map(activeSuppliers.map((s) => [s.id, s]));
       const occupiedCount = state.rooms.filter((r) => r.commercialStatus === 'Ocupada').length;
       const occupancyPct = Math.round((occupiedCount / Math.max(1, state.rooms.length)) * 100);
       const { root: view, clone } = loadViewTemplate(VIEW_HTML.ia_demanda);
@@ -1197,7 +1702,7 @@ export function renderServiciosPOSModule() {
           : suggestionsPager.slice.map((item) => {
               const sugQty = Math.max(8, Math.ceil(item.minStock * 1.2));
               const sugCost = sugQty * item.unitCost;
-              const sup = supById.get(item.supplierId) || state.suppliers[0];
+              const sup = supById.get(item.supplierId) || activeSuppliers[0];
               const row = clone('fila-sugerencia-compra');
               setText(row, 'name', item.name);
               setText(row, 'qty', `${sugQty} ${item.unit}`);
@@ -1211,7 +1716,7 @@ export function renderServiciosPOSModule() {
               if (canEditCurrentTab) {
                 getRef(row, 'order-btn').addEventListener('click', () => {
                   erpStore.createPurchaseOrder({
-                    supplierId: sup?.id || state.suppliers[0]?.id,
+                    supplierId: sup?.id || activeSuppliers[0]?.id,
                     items: [{
                       inventoryItemId: item.id,
                       itemName: item.name,
@@ -1225,6 +1730,39 @@ export function renderServiciosPOSModule() {
             })
       );
       mountRef(tabBody, 'footer-slot', suggestionsPager.footer);
+
+      bindPagedContainer({
+        container: getRef(tabBody, 'recommendations-list'),
+        key: 'm3.ia-recomendaciones',
+        list: getPagedList('m3.ia-recomendaciones', {
+          path: '/ai/demanda/recomendaciones', map: mapDemandRecommendationRows, pageSize: 10,
+        }),
+        filters: {
+          searchPlaceholder: 'Buscar recomendación…',
+          statusOptions: [
+            { value: '', label: 'Todos los estados' },
+            { value: 'pendiente', label: 'Pendientes' },
+            { value: 'aceptada', label: 'Aceptadas' },
+            { value: 'descartada', label: 'Descartadas' },
+          ],
+        },
+        renderBody: (rows) => h('div', null, ...rows.map((recommendation) => {
+          const row = clone('fila-recomendacion-ia');
+          setText(row, 'type', `${recommendation.type} · ${recommendation.estimatedQuantity}`);
+          setText(row, 'meta', `${recommendation.period} · ${recommendation.createdAt}`);
+          setText(row, 'reason', recommendation.reason);
+          mountRef(row, 'status', StatusText({ label: recommendation.status, variant: getStatusVariant(recommendation.status) }));
+          const pending = recommendation.rawStatus === 'pendiente' && canEditCurrentTab;
+          setVisible(row, 'decision-actions', pending);
+          if (pending) {
+            getRef(row, 'accept-btn').addEventListener('click', () => openDemandRecommendationDecisionModal(recommendation, 'aceptada'));
+            getRef(row, 'discard-btn').addEventListener('click', () => openDemandRecommendationDecisionModal(recommendation, 'descartada'));
+          }
+          return row;
+        })),
+        empty: { iconName: 'sparkles', title: 'Sin recomendaciones guardadas', description: 'Los pronósticos generados por IA aparecerán aquí para revisión humana.' },
+        noMatch: { iconName: 'search', title: 'Sin recomendaciones coincidentes', description: 'Prueba con otro estado o búsqueda.' },
+      });
 
       mountRef(
         tabBody,

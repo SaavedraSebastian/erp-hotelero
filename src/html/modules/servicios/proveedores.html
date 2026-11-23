@@ -22,7 +22,7 @@
             <th>Detalle</th>
             <th class="text-right">Total</th>
             <th>Estado</th>
-            <th class="text-right">Recepción</th>
+            <th class="text-right">Acciones</th>
           </tr>
         </thead>
         <tbody data-ref="po-tbody"></tbody>
@@ -44,11 +44,19 @@
     <td class="text-slate-600" data-ref="items"></td>
     <td class="text-right font-mono font-bold text-navy" data-ref="total"></td>
     <td data-ref="status"></td>
-    <td class="text-right">
-      <button type="button" class="btn btn-teal btn-xs hidden" data-ref="receive-btn">
-        <span data-ref="receive-icon"></span>
-        <span>Recibir compra</span>
-      </button>
+    <td>
+      <div class="row-wrap justify-end">
+        <button type="button" class="btn btn-outline btn-xs hidden" data-ref="edit-btn">Editar</button>
+        <button type="button" class="btn btn-teal btn-xs hidden" data-ref="approve-btn">Aprobar</button>
+        <button type="button" class="btn btn-outline-muted btn-xs hidden" data-ref="reject-btn">Rechazar</button>
+        <button type="button" class="btn btn-outline-muted btn-xs hidden" data-ref="cancel-btn">Cancelar</button>
+        <button type="button" class="btn btn-primary btn-xs hidden" data-ref="send-btn">Enviar</button>
+        <button type="button" class="btn btn-teal btn-xs hidden" data-ref="receive-btn">
+          <span data-ref="receive-icon"></span>
+          <span>Recibir</span>
+        </button>
+        <button type="button" class="btn btn-outline-muted btn-xs hidden" data-ref="annul-receipt-btn">Anular recepción</button>
+      </div>
       <span class="font-mono text-11 text-slate-400 hidden" data-ref="received-at"></span>
     </td>
   </tr>
@@ -62,5 +70,9 @@
     </div>
     <div class="font-mono text-11 text-slate-500" data-ref="ruc-cat"></div>
     <div class="text-11 text-slate-500" data-ref="contact"></div>
+    <div class="row-wrap justify-end">
+      <button type="button" class="btn btn-outline btn-xs hidden" data-ref="edit-btn">Editar</button>
+      <button type="button" class="btn btn-outline-muted btn-xs hidden" data-ref="status-btn"></button>
+    </div>
   </div>
 </template>

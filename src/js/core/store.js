@@ -23,6 +23,7 @@ import { reloadActivePagedList, resetPagedLists } from '../services/paged-list.j
 import { createWriteActions } from '../services/erp-actions.js';
 import { createEmptyERPState } from '../data/empty-state.js';
 import { nowStamp, uid } from '../utils/formatters.js';
+import { setActiveSiteId } from '../services/site-context.js';
 
 const listeners = new Set();
 const toastListeners = new Set();
@@ -136,6 +137,8 @@ export const erpStore = {
   get toasts() { return storeData.toasts; },
   get persistence() { return getPersistenceStatus(storeData.lastSyncedAt, storeData.loadInfo); },
   get loadInfo() { return storeData.loadInfo; },
+  get sites() { return storeData.currentUser?.sites ?? []; },
+  get activeSiteId() { return storeData.currentUser?.activeSiteId ?? ''; },
   get canViewFullPII() { return Boolean(storeData.currentPermissions?.canViewFullPII); },
 
   async init(initialResourceKeys = ['resumen']) {
@@ -159,10 +162,6 @@ export const erpStore = {
       }
     });
 
-    const configPromise = fetchEstablishmentConfig().then((cfg) => {
-      if (cfg) storeData.establishmentConfig = cfg;
-    });
-
     const authPromise = apiGetMe().then(async (session) => {
       if (session) {
         storeData.currentUser = { ...session.user, authMode: session.authMode };
@@ -176,9 +175,27 @@ export const erpStore = {
 
     // El estado se carga DESPUÉS de resolver la sesión: la API v1 exige el Bearer token de Supabase,
     // que se registra dentro de apiGetMe(). Cargar en paralelo producía 401 y caía a datos locales.
-    await Promise.all([configPromise, authPromise]);
+    await authPromise;
+    const config = await fetchEstablishmentConfig();
+    if (config) storeData.establishmentConfig = config;
     await erpStore.refreshState(storeData.initialResourceKeys, { reset: true });
     storeData.authLoading = false;
+    emit();
+  },
+
+  async selectSite(siteId) {
+    const site = (storeData.currentUser?.sites ?? []).find((item) => item.id === siteId);
+    if (!site || siteId === storeData.currentUser?.activeSiteId) return;
+    setActiveSiteId(siteId);
+    storeData.currentUser = { ...storeData.currentUser, activeSiteId: siteId };
+    storeData.establishmentConfig = await fetchEstablishmentConfig();
+    await erpStore.refreshState(storeData.loadedResources.size > 0 ? [...storeData.loadedResources] : storeData.initialResourceKeys, { reset: true });
+    emit();
+  },
+
+  setSites(sites, activeSiteId = storeData.currentUser?.activeSiteId) {
+    if (!storeData.currentUser) return;
+    storeData.currentUser = { ...storeData.currentUser, sites: Array.isArray(sites) ? sites : [], activeSiteId };
     emit();
   },
 
@@ -301,6 +318,7 @@ export const erpStore = {
 
   async logout() {
     await apiLogout();
+    setActiveSiteId('');
     // Sin sesión no debe quedar información operativa en memoria.
     storeData.state = createEmptyERPState();
     storeData.loadInfo = { source: 'unauthenticated', errors: [], truncated: [], forbidden: [] };

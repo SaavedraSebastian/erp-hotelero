@@ -42,6 +42,29 @@ export async function createComanda(req: Request, res: Response, next: NextFunct
   }
 }
 
+export async function agregarItemComanda(req: Request, res: Response, next: NextFunction) {
+  try {
+    const result = await service.agregarItemComandaService(req.authContext!, String(req.params.id), req.body);
+    res.status(201).json({ data: result });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function actualizarItemComanda(req: Request, res: Response, next: NextFunction) {
+  try {
+    const result = await service.actualizarItemComandaService(
+      req.authContext!,
+      String(req.params.id),
+      String(req.params.itemId),
+      req.body
+    );
+    res.json({ data: result });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function iniciarPreparacionComanda(req: Request, res: Response, next: NextFunction) {
   try {
     const result = await service.cambiarEstadoComandaService(req.authContext!, String(req.params.id), 'en preparación');
@@ -101,6 +124,15 @@ export async function createConsumo(req: Request, res: Response, next: NextFunct
   }
 }
 
+export async function actualizarConsumo(req: Request, res: Response, next: NextFunction) {
+  try {
+    const result = await service.actualizarConsumoService(req.authContext!, String(req.params.id), req.body);
+    res.json({ data: result });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function confirmarConsumo(req: Request, res: Response, next: NextFunction) {
   try {
     const result = await service.confirmarConsumoService(req.authContext!, String(req.params.id));
@@ -138,10 +170,65 @@ export async function anularConsumo(req: Request, res: Response, next: NextFunct
   }
 }
 
+export async function listSolicitudesServicio(req: Request, res: Response, next: NextFunction) {
+  try {
+    const params = parsePagination(req.query as Record<string, unknown>);
+    res.json(await service.getSolicitudesServicioService(req.authContext!, params));
+  } catch (err) { next(err); }
+}
+
+export async function createSolicitudServicio(req: Request, res: Response, next: NextFunction) {
+  try {
+    res.status(201).json({ data: await service.createSolicitudServicioService(req.authContext!, req.body) });
+  } catch (err) { next(err); }
+}
+
+export async function actualizarSolicitudServicio(req: Request, res: Response, next: NextFunction) {
+  try {
+    res.json({ data: await service.actualizarSolicitudServicioService(req.authContext!, String(req.params.id), req.body) });
+  } catch (err) { next(err); }
+}
+
+export async function iniciarSolicitudServicio(req: Request, res: Response, next: NextFunction) {
+  try {
+    res.json({ data: await service.iniciarSolicitudServicioService(req.authContext!, String(req.params.id)) });
+  } catch (err) { next(err); }
+}
+
+export async function completarSolicitudServicio(req: Request, res: Response, next: NextFunction) {
+  try {
+    res.json({ data: await service.completarSolicitudServicioService(req.authContext!, String(req.params.id), req.body) });
+  } catch (err) { next(err); }
+}
+
+export async function cancelarSolicitudServicio(req: Request, res: Response, next: NextFunction) {
+  try {
+    res.json({ data: await service.cancelarSolicitudServicioService(req.authContext!, String(req.params.id), req.body.motivo) });
+  } catch (err) { next(err); }
+}
+
 export async function listInventario(req: Request, res: Response, next: NextFunction) {
   try {
     const params = parsePagination(req.query as Record<string, unknown>);
     res.json(await service.getInventarioService(req.authContext!, params));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function listKardex(req: Request, res: Response, next: NextFunction) {
+  try {
+    const params = parsePagination(req.query as Record<string, unknown>);
+    res.json(await service.getKardexService(req.authContext!, String(req.params.id), params));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function listKardexGeneral(req: Request, res: Response, next: NextFunction) {
+  try {
+    const params = parsePagination(req.query as Record<string, unknown>);
+    res.json(await service.getKardexService(req.authContext!, null, params));
   } catch (err) {
     next(err);
   }
@@ -169,6 +256,26 @@ export async function createOrdenCompra(req: Request, res: Response, next: NextF
   try {
     const result = await service.createOrdenCompraService(req.authContext!, req.body);
     res.status(201).json({ data: result });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function actualizarOrdenCompra(req: Request, res: Response, next: NextFunction) {
+  try {
+    const result = await service.actualizarOrdenCompraService(req.authContext!, String(req.params.id), req.body);
+    res.json({ data: result });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function cancelarOrdenCompra(req: Request, res: Response, next: NextFunction) {
+  try {
+    const result = await service.cancelarOrdenCompraService(
+      req.authContext!, String(req.params.id), req.body.motivo
+    );
+    res.json({ data: result });
   } catch (err) {
     next(err);
   }
@@ -219,6 +326,17 @@ export async function recibirOrdenCompra(req: Request, res: Response, next: Next
   try {
     const result = await service.recibirOrdenCompraService(req.authContext!, String(req.params.id), req.body);
     res.status(201).json({ data: result });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function anularRecepcionCompra(req: Request, res: Response, next: NextFunction) {
+  try {
+    const result = await service.anularRecepcionCompraService(
+      req.authContext!, String(req.params.id), String(req.params.recepcionId), req.body.motivo
+    );
+    res.json({ data: result });
   } catch (err) {
     next(err);
   }
