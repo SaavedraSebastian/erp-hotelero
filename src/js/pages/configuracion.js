@@ -230,7 +230,7 @@ export function renderConfigPage() {
       };
 
       setVisible(tabNode, 'new-site-btn', canManageSites);
-      if (canManageSites) getRef(tabNode, 'new-site-btn').addEventListener('click', openSiteModal);
+      if (canManageSites) getRef(tabNode, 'new-site-btn').addEventListener('click', () => openSiteModal());
       mountRef(tabNode, 'sites-grid', (currentUser.sites ?? []).map((site) => {
         const card = clone('card-sede');
         setText(card, 'name', site.nombre);
